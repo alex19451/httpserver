@@ -12,7 +12,11 @@ func TestAgent(t *testing.T) {
 }
 
 func TestReportInterval(t *testing.T) {
-	assert.Equal(t, 0, 5%5)
-	assert.Equal(t, 0, 10%5)
-	assert.Equal(t, 1, 6%5)
+	a := 5
+	b := 10
+	c := 6
+
+	assert.Equal(t, 0, a%5)
+	assert.Equal(t, 0, b%5)
+	assert.Equal(t, 1, c%5)
 }
