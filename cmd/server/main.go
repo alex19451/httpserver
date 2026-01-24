@@ -83,11 +83,13 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	r := chi.NewRouter()
-
-	r.Post("update/{type}/{name}/{value}", updateHandler)
-	r.Get("value/{type}/{name}", valueHandler)
+	r.Post("/update/{type}/{name}/{value}", updateHandler)
+	r.Get("/value/{type}/{name}", valueHandler)
+	subRouter := chi.NewRouter()
+	subRouter.Post("update/{type}/{name}/{value}", updateHandler)
+	subRouter.Get("value/{type}/{name}", valueHandler)
+	r.Mount("/", subRouter)
 	r.Get("/", mainHandler)
-
 	fmt.Println("Server: http://localhost:8080")
 	http.ListenAndServe(":8080", r)
 }
