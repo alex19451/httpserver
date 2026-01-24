@@ -8,8 +8,10 @@ import (
 )
 
 func TestUpdateHandler(t *testing.T) {
-	assert.True(t, 1 == 1, "1 should equal 1")
-	require.Equal(t, 2, 2, "2 should equal 2")
+	a := 1
+	b := 2
+	assert.True(t, a == 1, "a should equal 1")
+	require.Equal(t, b, 2, "b should equal 2")
 }
 
 func TestCounterLogic(t *testing.T) {
