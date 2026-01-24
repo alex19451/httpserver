@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -11,7 +12,55 @@ import (
 var gauges = make(map[string]float64)
 var counters = make(map[string]int64)
 
-func updateHandler(w http.ResponseWriter, r *http.Request) {
+func oldUpdateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(405)
+		return
+	}
+	if r.Header.Get("Content-Type") != "text/plain" {
+		w.WriteHeader(400)
+		return
+	}
+
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+
+	if len(parts) != 4 || parts[0] != "update" {
+		w.WriteHeader(404)
+		return
+	}
+
+	metricType := parts[1]
+	metricName := parts[2]
+	metricValue := parts[3]
+
+	if metricName == "" {
+		w.WriteHeader(404)
+		return
+	}
+
+	if metricType == "gauge" {
+		val, err := strconv.ParseFloat(metricValue, 64)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		gauges[metricName] = val
+	} else if metricType == "counter" {
+		val, err := strconv.ParseInt(metricValue, 10, 64)
+		if err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		counters[metricName] += val
+	} else {
+		w.WriteHeader(400)
+		return
+	}
+
+	w.WriteHeader(200)
+}
+
+func newUpdateHandler(w http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "type")
 	name := chi.URLParam(r, "name")
 	value := chi.URLParam(r, "value")
@@ -83,13 +132,15 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	r := chi.NewRouter()
-	r.Post("/update/{type}/{name}/{value}", updateHandler)
+
+	r.Post("/update/{type}/{name}/{value}", newUpdateHandler)
 	r.Get("/value/{type}/{name}", valueHandler)
-	subRouter := chi.NewRouter()
-	subRouter.Post("update/{type}/{name}/{value}", updateHandler)
-	subRouter.Get("value/{type}/{name}", valueHandler)
-	r.Mount("/", subRouter)
 	r.Get("/", mainHandler)
+
+	http.HandleFunc("/update/", oldUpdateHandler)
+
 	fmt.Println("Server: http://localhost:8080")
-	http.ListenAndServe(":8080", r)
+
+	http.Handle("/", r)
+	http.ListenAndServe(":8080", nil)
 }
