@@ -2,16 +2,22 @@ package main
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestServer(t *testing.T) {
-	if testing.Short() {
-		t.Skip()
-	}
+func TestUpdateHandler(t *testing.T) {
+	a := 1
+	b := 2
+	assert.True(t, a == 1, "a should equal 1")
+	require.Equal(t, b, 2, "b should equal 2")
+}
 
-	t.Run("simple", func(t *testing.T) {
-		if 2+2 != 4 {
-			t.Fail()
-		}
-	})
+func TestCounterLogic(t *testing.T) {
+	count := 0
+	count++
+
+	assert.Equal(t, 1, count, "Count should be 1")
+	assert.NotEqual(t, 0, count, "Count should not be 0")
 }
