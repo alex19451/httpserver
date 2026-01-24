@@ -16,11 +16,6 @@ func updateHandler(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	value := chi.URLParam(r, "value")
 
-	if r.Header.Get("Content-Type") != "text/plain" {
-		w.WriteHeader(400)
-		return
-	}
-
 	if name == "" {
 		w.WriteHeader(404)
 		return
@@ -85,11 +80,12 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte(html))
 }
+
 func main() {
 	r := chi.NewRouter()
 
-	r.Post("/update/{type}/{name}/{value}", updateHandler)
-	r.Get("/value/{type}/{name}", valueHandler)
+	r.Post("update/{type}/{name}/{value}", updateHandler)
+	r.Get("value/{type}/{name}", valueHandler)
 	r.Get("/", mainHandler)
 
 	fmt.Println("Server: http://localhost:8080")
