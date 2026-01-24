@@ -44,10 +44,19 @@ func sendAll(pollCount int, mem runtime.MemStats) {
 func send(mtype, name, value string) {
 	url := fmt.Sprintf("http://localhost:8080/update/%s/%s/%s", mtype, name, value)
 
-	req, _ := http.NewRequest("POST", url, nil)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		fmt.Printf("Error creating request for %s/%s: %v\n", mtype, name, err)
+		return
+	}
 	req.Header.Set("Content-Type", "text/plain")
 
-	http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error sending metric %s/%s: %v\n", mtype, name, err)
+		return
+	}
+	resp.Body.Close()
 }
 
 func main() {
