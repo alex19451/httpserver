@@ -50,7 +50,6 @@ func send(mtype, name, value string) {
 	http.DefaultClient.Do(req)
 }
 
-
 func main() {
 	fmt.Println("Agent started")
 
