@@ -8,49 +8,51 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/caarlos0/env/v6"
 )
 
-var (
-	serverAddress  string
-	pollInterval   time.Duration
-	reportInterval time.Duration
-)
-
-func sendAll(pollCount int, mem runtime.MemStats) {
-	send("counter", "PollCount", fmt.Sprint(pollCount))
-	send("gauge", "RandomValue", fmt.Sprint(rand.Float64()))
-
-	send("gauge", "Alloc", fmt.Sprint(mem.Alloc))
-	send("gauge", "BuckHashSys", fmt.Sprint(mem.BuckHashSys))
-	send("gauge", "Frees", fmt.Sprint(mem.Frees))
-	send("gauge", "GCCPUFraction", fmt.Sprint(mem.GCCPUFraction))
-	send("gauge", "GCSys", fmt.Sprint(mem.GCSys))
-	send("gauge", "HeapAlloc", fmt.Sprint(mem.HeapAlloc))
-	send("gauge", "HeapIdle", fmt.Sprint(mem.HeapIdle))
-	send("gauge", "HeapInuse", fmt.Sprint(mem.HeapInuse))
-	send("gauge", "HeapObjects", fmt.Sprint(mem.HeapObjects))
-	send("gauge", "HeapReleased", fmt.Sprint(mem.HeapReleased))
-	send("gauge", "HeapSys", fmt.Sprint(mem.HeapSys))
-	send("gauge", "LastGC", fmt.Sprint(mem.LastGC))
-	send("gauge", "Lookups", fmt.Sprint(mem.Lookups))
-	send("gauge", "MCacheInuse", fmt.Sprint(mem.MCacheInuse))
-	send("gauge", "MCacheSys", fmt.Sprint(mem.MCacheSys))
-	send("gauge", "MSpanInuse", fmt.Sprint(mem.MSpanInuse))
-	send("gauge", "MSpanSys", fmt.Sprint(mem.MSpanSys))
-	send("gauge", "Mallocs", fmt.Sprint(mem.Mallocs))
-	send("gauge", "NextGC", fmt.Sprint(mem.NextGC))
-	send("gauge", "NumForcedGC", fmt.Sprint(mem.NumForcedGC))
-	send("gauge", "NumGC", fmt.Sprint(mem.NumGC))
-	send("gauge", "OtherSys", fmt.Sprint(mem.OtherSys))
-	send("gauge", "PauseTotalNs", fmt.Sprint(mem.PauseTotalNs))
-	send("gauge", "StackInuse", fmt.Sprint(mem.StackInuse))
-	send("gauge", "StackSys", fmt.Sprint(mem.StackSys))
-	send("gauge", "Sys", fmt.Sprint(mem.Sys))
-	send("gauge", "TotalAlloc", fmt.Sprint(mem.TotalAlloc))
+type Config struct {
+	Address        string `env:"ADDRESS" envDefault:"localhost:8080"`
+	PollInterval   int    `env:"POLL_INTERVAL" envDefault:"2"`
+	ReportInterval int    `env:"REPORT_INTERVAL" envDefault:"10"`
 }
 
-func send(mtype, name, value string) {
-	url := fmt.Sprintf("http://%s/update/%s/%s/%s", serverAddress, mtype, name, value)
+func sendAll(pollCount int, mem runtime.MemStats, address string) {
+	send("counter", "PollCount", fmt.Sprint(pollCount), address)
+	send("gauge", "RandomValue", fmt.Sprint(rand.Float64()), address)
+
+	send("gauge", "Alloc", fmt.Sprint(mem.Alloc), address)
+	send("gauge", "BuckHashSys", fmt.Sprint(mem.BuckHashSys), address)
+	send("gauge", "Frees", fmt.Sprint(mem.Frees), address)
+	send("gauge", "GCCPUFraction", fmt.Sprint(mem.GCCPUFraction), address)
+	send("gauge", "GCSys", fmt.Sprint(mem.GCSys), address)
+	send("gauge", "HeapAlloc", fmt.Sprint(mem.HeapAlloc), address)
+	send("gauge", "HeapIdle", fmt.Sprint(mem.HeapIdle), address)
+	send("gauge", "HeapInuse", fmt.Sprint(mem.HeapInuse), address)
+	send("gauge", "HeapObjects", fmt.Sprint(mem.HeapObjects), address)
+	send("gauge", "HeapReleased", fmt.Sprint(mem.HeapReleased), address)
+	send("gauge", "HeapSys", fmt.Sprint(mem.HeapSys), address)
+	send("gauge", "LastGC", fmt.Sprint(mem.LastGC), address)
+	send("gauge", "Lookups", fmt.Sprint(mem.Lookups), address)
+	send("gauge", "MCacheInuse", fmt.Sprint(mem.MCacheInuse), address)
+	send("gauge", "MCacheSys", fmt.Sprint(mem.MCacheSys), address)
+	send("gauge", "MSpanInuse", fmt.Sprint(mem.MSpanInuse), address)
+	send("gauge", "MSpanSys", fmt.Sprint(mem.MSpanSys), address)
+	send("gauge", "Mallocs", fmt.Sprint(mem.Mallocs), address)
+	send("gauge", "NextGC", fmt.Sprint(mem.NextGC), address)
+	send("gauge", "NumForcedGC", fmt.Sprint(mem.NumForcedGC), address)
+	send("gauge", "NumGC", fmt.Sprint(mem.NumGC), address)
+	send("gauge", "OtherSys", fmt.Sprint(mem.OtherSys), address)
+	send("gauge", "PauseTotalNs", fmt.Sprint(mem.PauseTotalNs), address)
+	send("gauge", "StackInuse", fmt.Sprint(mem.StackInuse), address)
+	send("gauge", "StackSys", fmt.Sprint(mem.StackSys), address)
+	send("gauge", "Sys", fmt.Sprint(mem.Sys), address)
+	send("gauge", "TotalAlloc", fmt.Sprint(mem.TotalAlloc), address)
+}
+
+func send(mtype, name, value, address string) {
+	url := fmt.Sprintf("http://%s/update/%s/%s/%s", address, mtype, name, value)
 
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -68,12 +70,20 @@ func send(mtype, name, value string) {
 }
 
 func main() {
-	var pollIntervalSec int
-	var reportIntervalSec int
+	var cfg Config
 
-	flag.StringVar(&serverAddress, "a", "localhost:8080", "HTTP server endpoint address")
-	flag.IntVar(&pollIntervalSec, "p", 2, "metrics poll interval from runtime package (seconds)")
-	flag.IntVar(&reportIntervalSec, "r", 10, "metrics report interval to server (seconds)")
+	if err := env.Parse(&cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing environment variables: %v\n", err)
+		os.Exit(1)
+	}
+
+	var addressFlag string
+	var pollIntervalFlag int
+	var reportIntervalFlag int
+
+	flag.StringVar(&addressFlag, "a", cfg.Address, "HTTP server endpoint address")
+	flag.IntVar(&pollIntervalFlag, "p", cfg.PollInterval, "metrics poll interval from runtime package (seconds)")
+	flag.IntVar(&reportIntervalFlag, "r", cfg.ReportInterval, "metrics report interval to server (seconds)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -90,11 +100,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	pollInterval = time.Duration(pollIntervalSec) * time.Second
-	reportInterval = time.Duration(reportIntervalSec) * time.Second
+	finalAddress := addressFlag
+	finalPollInterval := pollIntervalFlag
+	finalReportInterval := reportIntervalFlag
+
+	pollInterval := time.Duration(finalPollInterval) * time.Second
+	reportInterval := time.Duration(finalReportInterval) * time.Second
 
 	fmt.Printf("Agent started\n")
-	fmt.Printf("Server address: %s\n", serverAddress)
+	fmt.Printf("Server address: %s\n", finalAddress)
 	fmt.Printf("Poll interval: %v\n", pollInterval)
 	fmt.Printf("Report interval: %v\n", reportInterval)
 
@@ -114,7 +128,7 @@ func main() {
 
 		case <-reportTicker.C:
 			fmt.Println("Sending metrics")
-			sendAll(count, mem)
+			sendAll(count, mem, finalAddress)
 		}
 	}
 }
