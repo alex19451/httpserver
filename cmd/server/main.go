@@ -13,8 +13,6 @@ import (
 var gauges = make(map[string]float64)
 var counters = make(map[string]int64)
 
-var serverAddress string
-
 func updateHandler(w http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "type")
 	name := chi.URLParam(r, "name")
@@ -86,7 +84,8 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	flag.StringVar(&serverAddress, "a", "localhost:8080", "HTTP server endpoint address")
+	var addressFlag string
+	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -103,17 +102,29 @@ func main() {
 		os.Exit(1)
 	}
 
+	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
+
 	r := chi.NewRouter()
 
 	r.Post("/update/{type}/{name}/{value}", updateHandler)
 	r.Get("/value/{type}/{name}", valueHandler)
 	r.Get("/", mainHandler)
 
-	fmt.Printf("Server starting on http://%s\n", serverAddress)
+	fmt.Printf("Server starting on http://%s\n", address)
 
-	err := http.ListenAndServe(serverAddress, r)
+	err := http.ListenAndServe(address, r)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Server startup error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func getConfigValue(envVar, flagValue, defaultValue string) string {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		return envValue
+	}
+	if flagValue != "" && flagValue != defaultValue {
+		return flagValue
+	}
+	return defaultValue
 }
