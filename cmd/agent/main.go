@@ -1,11 +1,19 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"os"
 	"runtime"
 	"time"
+)
+
+var (
+	serverAddress  string
+	pollInterval   time.Duration
+	reportInterval time.Duration
 )
 
 func sendAll(pollCount int, mem runtime.MemStats) {
@@ -42,7 +50,7 @@ func sendAll(pollCount int, mem runtime.MemStats) {
 }
 
 func send(mtype, name, value string) {
-	url := fmt.Sprintf("http://localhost:8080/update/%s/%s/%s", mtype, name, value)
+	url := fmt.Sprintf("http://%s/update/%s/%s/%s", serverAddress, mtype, name, value)
 
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
@@ -60,18 +68,51 @@ func send(mtype, name, value string) {
 }
 
 func main() {
-	fmt.Println("Agent started")
+	var pollIntervalSec int
+	var reportIntervalSec int
+
+	flag.StringVar(&serverAddress, "a", "localhost:8080", "HTTP server endpoint address")
+	flag.IntVar(&pollIntervalSec, "p", 2, "metrics poll interval from runtime package (seconds)")
+	flag.IntVar(&reportIntervalSec, "r", 10, "metrics report interval to server (seconds)")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	flag.Parse()
+
+	if flag.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "Error: unknown arguments: %v\n", flag.Args())
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	pollInterval = time.Duration(pollIntervalSec) * time.Second
+	reportInterval = time.Duration(reportIntervalSec) * time.Second
+
+	fmt.Printf("Agent started\n")
+	fmt.Printf("Server address: %s\n", serverAddress)
+	fmt.Printf("Poll interval: %v\n", pollInterval)
+	fmt.Printf("Report interval: %v\n", reportInterval)
 
 	count := 0
+	pollTicker := time.NewTicker(pollInterval)
+	reportTicker := time.NewTicker(reportInterval)
+	defer pollTicker.Stop()
+	defer reportTicker.Stop()
+
+	var mem runtime.MemStats
 
 	for {
-		time.Sleep(2 * time.Second)
-		count++
+		select {
+		case <-pollTicker.C:
+			count++
+			runtime.ReadMemStats(&mem)
 
-		var mem runtime.MemStats
-		runtime.ReadMemStats(&mem)
-
-		if count%5 == 0 {
+		case <-reportTicker.C:
 			fmt.Println("Sending metrics")
 			sendAll(count, mem)
 		}

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -10,6 +12,8 @@ import (
 
 var gauges = make(map[string]float64)
 var counters = make(map[string]int64)
+
+var serverAddress string
 
 func updateHandler(w http.ResponseWriter, r *http.Request) {
 	metricType := chi.URLParam(r, "type")
@@ -82,13 +86,34 @@ func mainHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	flag.StringVar(&serverAddress, "a", "localhost:8080", "HTTP server endpoint address")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
+	flag.Parse()
+
+	if flag.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "Error: unknown arguments: %v\n", flag.Args())
+		flag.Usage()
+		os.Exit(1)
+	}
+
 	r := chi.NewRouter()
 
 	r.Post("/update/{type}/{name}/{value}", updateHandler)
 	r.Get("/value/{type}/{name}", valueHandler)
 	r.Get("/", mainHandler)
 
-	fmt.Println("Server: http://localhost:8080")
+	fmt.Printf("Server starting on http://%s\n", serverAddress)
 
-	http.ListenAndServe(":8080", r)
+	err := http.ListenAndServe(serverAddress, r)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Server startup error: %v\n", err)
+		os.Exit(1)
+	}
 }
