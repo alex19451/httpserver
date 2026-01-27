@@ -1,4 +1,4 @@
-module httpserver
+module github.com/alex19451/httpserver
 
 go 1.24
 
