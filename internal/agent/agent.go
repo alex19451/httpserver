@@ -23,8 +23,9 @@ func (a *Agent) Run() {
 	reportInterval := time.Duration(a.cfg.ReportInterval) * time.Second
 
 	fmt.Printf("Agent started\n")
-	fmt.Printf("Server: %s\n", a.cfg.Address)
-	fmt.Printf("Poll: %v, Report: %v\n", pollInterval, reportInterval)
+	fmt.Printf("Server address: %s\n", a.cfg.Address)
+	fmt.Printf("Poll interval: %v\n", pollInterval)
+	fmt.Printf("Report interval: %v\n", reportInterval)
 
 	count := 0
 	pollTicker := time.NewTicker(pollInterval)
@@ -83,12 +84,16 @@ func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) {
 func (a *Agent) send(mtype, name, value string) {
 	url := fmt.Sprintf("http://%s/update/%s/%s/%s", a.cfg.Address, mtype, name, value)
 
-	req, _ := http.NewRequest("POST", url, nil)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		fmt.Printf("Error creating request for %s/%s: %v\n", mtype, name, err)
+		return
+	}
 	req.Header.Set("Content-Type", "text/plain")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Printf("Error sending %s/%s: %v\n", mtype, name, err)
+		fmt.Printf("Error sending metric %s/%s: %v\n", mtype, name, err)
 		return
 	}
 	resp.Body.Close()

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type ServerConfig struct {
@@ -17,36 +18,80 @@ type AgentConfig struct {
 }
 
 func ParseServerConfig() *ServerConfig {
-	var address string
-	flag.StringVar(&address, "a", "localhost:8080", "HTTP server endpoint address")
+	var addressFlag string
+	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+
 	flag.Parse()
 
 	if flag.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "Error: unknown arguments: %v\n", flag.Args())
+		flag.Usage()
 		os.Exit(1)
 	}
 
+	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
 	return &ServerConfig{Address: address}
 }
 
 func ParseAgentConfig() *AgentConfig {
-	var address string
-	var pollInterval int
-	var reportInterval int
+	var addressFlag string
+	var pollIntervalFlag int
+	var reportIntervalFlag int
 
-	flag.StringVar(&address, "a", "localhost:8080", "HTTP server endpoint address")
-	flag.IntVar(&pollInterval, "p", 2, "metrics poll interval from runtime package (seconds)")
-	flag.IntVar(&reportInterval, "r", 10, "metrics report interval to server (seconds)")
+	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
+	flag.IntVar(&pollIntervalFlag, "p", 2, "metrics poll interval (seconds)")
+	flag.IntVar(&reportIntervalFlag, "r", 10, "metrics report interval (seconds)")
+
 	flag.Parse()
 
 	if flag.NArg() > 0 {
 		fmt.Fprintf(os.Stderr, "Error: unknown arguments: %v\n", flag.Args())
+		flag.Usage()
 		os.Exit(1)
 	}
+
+	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
+	pollInterval := getIntConfigValue("POLL_INTERVAL", pollIntervalFlag, 2)
+	reportInterval := getIntConfigValue("REPORT_INTERVAL", reportIntervalFlag, 10)
 
 	return &AgentConfig{
 		Address:        address,
 		PollInterval:   pollInterval,
 		ReportInterval: reportInterval,
 	}
+}
+
+func getConfigValue(envVar, flagValue, defaultValue string) string {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		return envValue
+	}
+
+	if envVar == "ADDRESS" {
+		if port := os.Getenv("SERVER_PORT"); port != "" {
+			return "localhost:" + port
+		}
+	}
+
+	if flagValue != "" && flagValue != defaultValue {
+		return flagValue
+	}
+	return defaultValue
+}
+
+func getIntConfigValue(envVar string, flagValue, defaultValue int) int {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		if val, err := strconv.Atoi(envValue); err == nil {
+			return val
+		}
+	}
+	if flagValue != defaultValue {
+		return flagValue
+	}
+	return defaultValue
 }
