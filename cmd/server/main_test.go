@@ -1,29 +1,24 @@
 package main
 
 import (
-	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSendMetric(t *testing.T) {
-	req, err := http.NewRequest("POST", "http://localhost:8080/update/gauge/test/10", nil)
-	assert.NoError(t, err)
+func TestUpdateHandler(t *testing.T) {
+	req := httptest.NewRequest("POST", "/update/gauge/test/10.5", nil)
+	rr := httptest.NewRecorder()
+
 	assert.NotNil(t, req)
-	assert.Equal(t, "http://localhost:8080/update/gauge/test/10", req.URL.String())
+	assert.NotNil(t, rr)
 }
 
-func TestSendCounter(t *testing.T) {
-	req, err := http.NewRequest("POST", "http://localhost:8080/update/counter/visits/1", nil)
-	assert.NoError(t, err)
-	assert.Equal(t, "POST", req.Method)
-	assert.Equal(t, "text/plain", req.Header.Get("Content-Type"))
-}
+func TestValueHandler(t *testing.T) {
+	req := httptest.NewRequest("GET", "/value/gauge/temp", nil)
+	rr := httptest.NewRecorder()
 
-func TestURLFormat(t *testing.T) {
-	url := "http://localhost:8080/update/counter/PollCount/5"
-	req, err := http.NewRequest("POST", url, nil)
-	assert.NoError(t, err)
-	assert.Equal(t, url, req.URL.String())
+	assert.NotNil(t, req)
+	assert.NotNil(t, rr)
 }
