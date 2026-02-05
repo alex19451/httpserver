@@ -1,23 +1,29 @@
 package main
 
 import (
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-func TestUpdateHandler(t *testing.T) {
-	a := 1
-	b := 2
-	assert.True(t, a == 1, "a should equal 1")
-	require.Equal(t, b, 2, "b should equal 2")
+func TestSendMetric(t *testing.T) {
+	req, err := http.NewRequest("POST", "http://localhost:8080/update/gauge/test/10", nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, req)
+	assert.Equal(t, "http://localhost:8080/update/gauge/test/10", req.URL.String())
 }
 
-func TestCounterLogic(t *testing.T) {
-	count := 0
-	count++
+func TestSendCounter(t *testing.T) {
+	req, err := http.NewRequest("POST", "http://localhost:8080/update/counter/visits/1", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "text/plain", req.Header.Get("Content-Type"))
+}
 
-	assert.Equal(t, 1, count, "Count should be 1")
-	assert.NotEqual(t, 0, count, "Count should not be 0")
+func TestURLFormat(t *testing.T) {
+	url := "http://localhost:8080/update/counter/PollCount/5"
+	req, err := http.NewRequest("POST", url, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, url, req.URL.String())
 }

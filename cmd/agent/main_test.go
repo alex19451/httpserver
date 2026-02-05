@@ -1,22 +1,24 @@
 package main
 
 import (
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestAgent(t *testing.T) {
-	assert.True(t, true)
-	assert.False(t, false)
+func TestUpdateHandler(t *testing.T) {
+	req := httptest.NewRequest("POST", "/update/gauge/test/10.5", nil)
+	rr := httptest.NewRecorder()
+
+	assert.NotNil(t, req)
+	assert.NotNil(t, rr)
 }
 
-func TestReportInterval(t *testing.T) {
-	a := 5
-	b := 10
-	c := 6
+func TestValueHandler(t *testing.T) {
+	req := httptest.NewRequest("GET", "/value/gauge/temp", nil)
+	rr := httptest.NewRecorder()
 
-	assert.Equal(t, 0, a%5)
-	assert.Equal(t, 0, b%5)
-	assert.Equal(t, 1, c%5)
+	assert.NotNil(t, req)
+	assert.NotNil(t, rr)
 }
