@@ -8,6 +8,7 @@ import (
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
+	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -16,11 +17,18 @@ type Server struct {
 }
 
 func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
+	logrus.SetLevel(logrus.InfoLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp: true,
+	})
+
 	return &Server{cfg: cfg, db: db}
 }
 
 func (s *Server) Run() error {
 	r := chi.NewRouter()
+
+	r.Use(loggingMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -34,6 +42,7 @@ func (s *Server) Run() error {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
+	logrus.Info("server starting on " + s.cfg.Address)
 	fmt.Printf("Server starting on http://%s\n", s.cfg.Address)
 	return http.ListenAndServe(s.cfg.Address, r)
 }
