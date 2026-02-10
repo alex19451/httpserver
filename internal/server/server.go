@@ -8,6 +8,7 @@ import (
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
+	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -16,11 +17,16 @@ type Server struct {
 }
 
 func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
+	logrus.SetLevel(logrus.InfoLevel)
+	logrus.SetFormatter(&logrus.TextFormatter{})
+
 	return &Server{cfg: cfg, db: db}
 }
 
 func (s *Server) Run() error {
 	r := chi.NewRouter()
+
+	r.Use(LoggingMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
