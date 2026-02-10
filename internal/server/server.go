@@ -18,9 +18,7 @@ type Server struct {
 
 func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
 	logrus.SetLevel(logrus.InfoLevel)
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp: true,
-	})
+	logrus.SetFormatter(&logrus.TextFormatter{})
 
 	return &Server{cfg: cfg, db: db}
 }
@@ -28,7 +26,7 @@ func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
 func (s *Server) Run() error {
 	r := chi.NewRouter()
 
-	r.Use(loggingMiddleware)
+	r.Use(LoggingMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -42,7 +40,6 @@ func (s *Server) Run() error {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
-	logrus.Info("server starting on " + s.cfg.Address)
 	fmt.Printf("Server starting on http://%s\n", s.cfg.Address)
 	return http.ListenAndServe(s.cfg.Address, r)
 }
