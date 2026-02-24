@@ -71,7 +71,8 @@ func (a *Agent) sendAllWithBackoff(pollCount int, mem runtime.MemStats) {
 func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) bool {
 	success := true
 
-	if !a.sendJSON("counter", "PollCount", int64(pollCount), nil) {
+	pollCountValue := int64(pollCount)
+	if !a.sendJSON("counter", "PollCount", &pollCountValue, nil) {
 		success = false
 	}
 
@@ -111,7 +112,8 @@ func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) bool {
 	}
 
 	for name, value := range runtimeMetrics {
-		if !a.sendJSON("gauge", name, nil, &value) {
+		val := value
+		if !a.sendJSON("gauge", name, nil, &val) {
 			success = false
 		}
 	}
@@ -161,6 +163,5 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 		return false
 	}
 
-	fmt.Printf("Metric %s sent successfully\n", name)
 	return true
 }
