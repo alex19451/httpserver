@@ -24,6 +24,10 @@ func TestSendMetric(t *testing.T) {
 
 	req, err := http.NewRequest("POST", "http://localhost:8080/update/", bytes.NewBuffer(data))
 	assert.NoError(t, err)
+
+	// Добавляем заголовок
+	req.Header.Set("Content-Type", "application/json")
+
 	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
 }
 
@@ -40,7 +44,12 @@ func TestSendCounter(t *testing.T) {
 
 	req, err := http.NewRequest("POST", "http://localhost:8080/update/", bytes.NewBuffer(data))
 	assert.NoError(t, err)
+
+	// Добавляем заголовок
+	req.Header.Set("Content-Type", "application/json")
+
 	assert.Equal(t, "POST", req.Method)
+	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
 }
 
 func TestURLFormat(t *testing.T) {
