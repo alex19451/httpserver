@@ -1,14 +1,15 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/alex19451/httpserver/internal/config"
+	"github.com/alex19451/httpserver/internal/models"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
-	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -17,9 +18,6 @@ type Server struct {
 }
 
 func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
-	logrus.SetLevel(logrus.InfoLevel)
-	logrus.SetFormatter(&logrus.TextFormatter{})
-
 	return &Server{cfg: cfg, db: db}
 }
 
@@ -30,6 +28,10 @@ func (s *Server) Run() error {
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
+
+	r.Post("/update/", s.updateJSON)
+	r.Post("/value/", s.valueJSON)
+
 	r.Get("/", s.getAll)
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +74,115 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+}
+
+func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var metrics models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if metrics.ID == "" || metrics.MType == "" {
+		http.Error(w, "id and type are required", http.StatusBadRequest)
+		return
+	}
+
+	if metrics.MType == "gauge" {
+		if metrics.Value == nil {
+			http.Error(w, "value is required for gauge", http.StatusBadRequest)
+			return
+		}
+		s.db.Gauges[metrics.ID] = *metrics.Value
+
+		resp := models.Metrics{
+			ID:    metrics.ID,
+			MType: metrics.MType,
+			Value: metrics.Value,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+
+	} else if metrics.MType == "counter" {
+		if metrics.Delta == nil {
+			http.Error(w, "delta is required for counter", http.StatusBadRequest)
+			return
+		}
+		s.db.Counters[metrics.ID] += *metrics.Delta
+
+		delta := s.db.Counters[metrics.ID]
+		resp := models.Metrics{
+			ID:    metrics.ID,
+			MType: metrics.MType,
+			Delta: &delta,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
+
+	} else {
+		http.Error(w, "invalid metric type", http.StatusBadRequest)
+		return
+	}
+}
+
+func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var metrics models.Metrics
+	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if metrics.ID == "" || metrics.MType == "" {
+		http.Error(w, "id and type are required", http.StatusBadRequest)
+		return
+	}
+
+	if metrics.MType == "gauge" {
+		val, ok := s.db.Gauges[metrics.ID]
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
+			return
+		}
+
+		resp := models.Metrics{
+			ID:    metrics.ID,
+			MType: metrics.MType,
+			Value: &val,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+	} else if metrics.MType == "counter" {
+		val, ok := s.db.Counters[metrics.ID]
+		if !ok {
+			http.Error(w, "metric not found", http.StatusNotFound)
+			return
+		}
+
+		resp := models.Metrics{
+			ID:    metrics.ID,
+			MType: metrics.MType,
+			Delta: &val,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+
+	} else {
+		http.Error(w, "invalid metric type", http.StatusBadRequest)
 		return
 	}
 }
