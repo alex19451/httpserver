@@ -23,12 +23,6 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		contentType := w.Header().Get("Content-Type")
-		if !strings.Contains(contentType, "application/json") && !strings.Contains(contentType, "text/html") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
 		if err != nil {
 			next.ServeHTTP(w, r)
