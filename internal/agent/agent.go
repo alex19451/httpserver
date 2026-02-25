@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -137,13 +138,26 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 		return false
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(data))
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		fmt.Printf("Error compressing data for %s: %v\n", name, err)
+		return false
+	}
+	if err := gz.Close(); err != nil {
+		fmt.Printf("Error closing gzip for %s: %v\n", name, err)
+		return false
+	}
+
+	req, err := http.NewRequest("POST", url, &buf)
 	if err != nil {
 		fmt.Printf("Error creating request for %s: %v\n", name, err)
 		return false
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -157,8 +171,19 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 		return false
 	}
 
+	reader := resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			fmt.Printf("Error creating gzip reader for response %s: %v\n", name, err)
+			return false
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
 	var respMetrics models.Metrics
-	if err := json.NewDecoder(resp.Body).Decode(&respMetrics); err != nil {
+	if err := json.NewDecoder(reader).Decode(&respMetrics); err != nil {
 		fmt.Printf("Error decoding response for %s: %v\n", name, err)
 		return false
 	}

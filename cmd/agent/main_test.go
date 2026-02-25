@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -22,13 +24,20 @@ func TestSendMetric(t *testing.T) {
 	data, err := json.Marshal(metrics)
 	assert.NoError(t, err)
 
-	req, err := http.NewRequest("POST", "http://localhost:8080/update/", bytes.NewBuffer(data))
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(data)
+	assert.NoError(t, err)
+	gz.Close()
+
+	req, err := http.NewRequest("POST", "http://localhost:8080/update/", &buf)
 	assert.NoError(t, err)
 
-	// Добавляем заголовок
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 
 	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
+	assert.Equal(t, "gzip", req.Header.Get("Content-Encoding"))
 }
 
 func TestSendCounter(t *testing.T) {
@@ -42,14 +51,21 @@ func TestSendCounter(t *testing.T) {
 	data, err := json.Marshal(metrics)
 	assert.NoError(t, err)
 
-	req, err := http.NewRequest("POST", "http://localhost:8080/update/", bytes.NewBuffer(data))
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err = gz.Write(data)
+	assert.NoError(t, err)
+	gz.Close()
+
+	req, err := http.NewRequest("POST", "http://localhost:8080/update/", &buf)
 	assert.NoError(t, err)
 
-	// Добавляем заголовок
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
 
 	assert.Equal(t, "POST", req.Method)
 	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
+	assert.Equal(t, "gzip", req.Header.Get("Content-Encoding"))
 }
 
 func TestURLFormat(t *testing.T) {
@@ -70,4 +86,21 @@ func TestBackoffSchedule(t *testing.T) {
 	assert.Equal(t, 100*time.Millisecond, backoffSchedule[0])
 	assert.Equal(t, 500*time.Millisecond, backoffSchedule[1])
 	assert.Equal(t, 1*time.Second, backoffSchedule[2])
+}
+
+func TestGzipDecompress(t *testing.T) {
+	original := []byte("test data")
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write(original)
+	assert.NoError(t, err)
+	gz.Close()
+
+	gzReader, err := gzip.NewReader(&buf)
+	assert.NoError(t, err)
+	defer gzReader.Close()
+
+	decompressed, err := io.ReadAll(gzReader)
+	assert.NoError(t, err)
+	assert.Equal(t, original, decompressed)
 }

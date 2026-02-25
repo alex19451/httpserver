@@ -1,10 +1,12 @@
 package server
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
@@ -25,6 +27,7 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware)
+	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -79,13 +82,24 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
+	body := r.Body
+	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		body = gz
+	}
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
 
 	var metrics models.Metrics
-	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+	if err := json.NewDecoder(body).Decode(&metrics); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -135,13 +149,24 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
+	body := r.Body
+	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		body = gz
+	}
+
 	if r.Header.Get("Content-Type") != "application/json" {
 		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
 		return
 	}
 
 	var metrics models.Metrics
-	if err := json.NewDecoder(r.Body).Decode(&metrics); err != nil {
+	if err := json.NewDecoder(body).Decode(&metrics); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
