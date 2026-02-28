@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"bytes"
+	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"net/http"
@@ -8,6 +11,7 @@ import (
 	"time"
 
 	"github.com/alex19451/httpserver/internal/config"
+	"github.com/alex19451/httpserver/internal/models"
 )
 
 type Agent struct {
@@ -43,58 +47,146 @@ func (a *Agent) Run() {
 
 		case <-reportTicker.C:
 			fmt.Println("Sending metrics")
-			a.sendAll(count, mem)
+			a.sendAllWithBackoff(count, mem)
 		}
 	}
 }
 
-func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) {
-	a.send("counter", "PollCount", fmt.Sprint(pollCount))
-	a.send("gauge", "RandomValue", fmt.Sprint(rand.Float64()))
+func (a *Agent) sendAllWithBackoff(pollCount int, mem runtime.MemStats) {
+	backoffSchedule := []time.Duration{
+		100 * time.Millisecond,
+		500 * time.Millisecond,
+		1 * time.Second,
+	}
 
-	a.send("gauge", "Alloc", fmt.Sprint(mem.Alloc))
-	a.send("gauge", "BuckHashSys", fmt.Sprint(mem.BuckHashSys))
-	a.send("gauge", "Frees", fmt.Sprint(mem.Frees))
-	a.send("gauge", "GCCPUFraction", fmt.Sprint(mem.GCCPUFraction))
-	a.send("gauge", "GCSys", fmt.Sprint(mem.GCSys))
-	a.send("gauge", "HeapAlloc", fmt.Sprint(mem.HeapAlloc))
-	a.send("gauge", "HeapIdle", fmt.Sprint(mem.HeapIdle))
-	a.send("gauge", "HeapInuse", fmt.Sprint(mem.HeapInuse))
-	a.send("gauge", "HeapObjects", fmt.Sprint(mem.HeapObjects))
-	a.send("gauge", "HeapReleased", fmt.Sprint(mem.HeapReleased))
-	a.send("gauge", "HeapSys", fmt.Sprint(mem.HeapSys))
-	a.send("gauge", "LastGC", fmt.Sprint(mem.LastGC))
-	a.send("gauge", "Lookups", fmt.Sprint(mem.Lookups))
-	a.send("gauge", "MCacheInuse", fmt.Sprint(mem.MCacheInuse))
-	a.send("gauge", "MCacheSys", fmt.Sprint(mem.MCacheSys))
-	a.send("gauge", "MSpanInuse", fmt.Sprint(mem.MSpanInuse))
-	a.send("gauge", "MSpanSys", fmt.Sprint(mem.MSpanSys))
-	a.send("gauge", "Mallocs", fmt.Sprint(mem.Mallocs))
-	a.send("gauge", "NextGC", fmt.Sprint(mem.NextGC))
-	a.send("gauge", "NumForcedGC", fmt.Sprint(mem.NumForcedGC))
-	a.send("gauge", "NumGC", fmt.Sprint(mem.NumGC))
-	a.send("gauge", "OtherSys", fmt.Sprint(mem.OtherSys))
-	a.send("gauge", "PauseTotalNs", fmt.Sprint(mem.PauseTotalNs))
-	a.send("gauge", "StackInuse", fmt.Sprint(mem.StackInuse))
-	a.send("gauge", "StackSys", fmt.Sprint(mem.StackSys))
-	a.send("gauge", "Sys", fmt.Sprint(mem.Sys))
-	a.send("gauge", "TotalAlloc", fmt.Sprint(mem.TotalAlloc))
+	for _, backoff := range backoffSchedule {
+		if a.sendAll(pollCount, mem) {
+			return
+		}
+		fmt.Printf("Failed to send metrics, retrying in %v\n", backoff)
+		time.Sleep(backoff)
+	}
+	fmt.Println("Failed to send metrics after all retries")
 }
 
-func (a *Agent) send(mtype, name, value string) {
-	url := fmt.Sprintf("http://%s/update/%s/%s/%s", a.cfg.Address, mtype, name, value)
+func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) bool {
+	success := true
 
-	req, err := http.NewRequest("POST", url, nil)
-	if err != nil {
-		fmt.Printf("Error creating request for %s/%s: %v\n", mtype, name, err)
-		return
+	pollCountValue := int64(pollCount)
+	if !a.sendJSON("counter", "PollCount", &pollCountValue, nil) {
+		success = false
 	}
-	req.Header.Set("Content-Type", "text/plain")
+
+	randomValue := rand.Float64()
+	if !a.sendJSON("gauge", "RandomValue", nil, &randomValue) {
+		success = false
+	}
+
+	runtimeMetrics := map[string]float64{
+		"Alloc":         float64(mem.Alloc),
+		"BuckHashSys":   float64(mem.BuckHashSys),
+		"Frees":         float64(mem.Frees),
+		"GCCPUFraction": mem.GCCPUFraction,
+		"GCSys":         float64(mem.GCSys),
+		"HeapAlloc":     float64(mem.HeapAlloc),
+		"HeapIdle":      float64(mem.HeapIdle),
+		"HeapInuse":     float64(mem.HeapInuse),
+		"HeapObjects":   float64(mem.HeapObjects),
+		"HeapReleased":  float64(mem.HeapReleased),
+		"HeapSys":       float64(mem.HeapSys),
+		"LastGC":        float64(mem.LastGC),
+		"Lookups":       float64(mem.Lookups),
+		"MCacheInuse":   float64(mem.MCacheInuse),
+		"MCacheSys":     float64(mem.MCacheSys),
+		"MSpanInuse":    float64(mem.MSpanInuse),
+		"MSpanSys":      float64(mem.MSpanSys),
+		"Mallocs":       float64(mem.Mallocs),
+		"NextGC":        float64(mem.NextGC),
+		"NumForcedGC":   float64(mem.NumForcedGC),
+		"NumGC":         float64(mem.NumGC),
+		"OtherSys":      float64(mem.OtherSys),
+		"PauseTotalNs":  float64(mem.PauseTotalNs),
+		"StackInuse":    float64(mem.StackInuse),
+		"StackSys":      float64(mem.StackSys),
+		"Sys":           float64(mem.Sys),
+		"TotalAlloc":    float64(mem.TotalAlloc),
+	}
+
+	for name, value := range runtimeMetrics {
+		val := value
+		if !a.sendJSON("gauge", name, nil, &val) {
+			success = false
+		}
+	}
+
+	return success
+}
+
+func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool {
+	url := fmt.Sprintf("http://%s/update/", a.cfg.Address)
+
+	metrics := models.Metrics{
+		ID:    name,
+		MType: mtype,
+		Delta: delta,
+		Value: value,
+	}
+
+	data, err := json.Marshal(metrics)
+	if err != nil {
+		fmt.Printf("Error marshaling metric %s: %v\n", name, err)
+		return false
+	}
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if _, err := gz.Write(data); err != nil {
+		fmt.Printf("Error compressing data for %s: %v\n", name, err)
+		return false
+	}
+	if err := gz.Close(); err != nil {
+		fmt.Printf("Error closing gzip for %s: %v\n", name, err)
+		return false
+	}
+
+	req, err := http.NewRequest("POST", url, &buf)
+	if err != nil {
+		fmt.Printf("Error creating request for %s: %v\n", name, err)
+		return false
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Printf("Error sending metric %s/%s: %v\n", mtype, name, err)
-		return
+		fmt.Printf("Error sending metric %s: %v\n", name, err)
+		return false
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Error response for %s: %d\n", name, resp.StatusCode)
+		return false
+	}
+
+	reader := resp.Body
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gz, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			fmt.Printf("Error creating gzip reader for response %s: %v\n", name, err)
+			return false
+		}
+		defer gz.Close()
+		reader = gz
+	}
+
+	var respMetrics models.Metrics
+	if err := json.NewDecoder(reader).Decode(&respMetrics); err != nil {
+		fmt.Printf("Error decoding response for %s: %v\n", name, err)
+		return false
+	}
+
+	return true
 }
