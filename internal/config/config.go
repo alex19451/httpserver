@@ -8,7 +8,10 @@ import (
 )
 
 type ServerConfig struct {
-	Address string
+	Address         string
+	StoreInterval   int
+	FileStoragePath string
+	Restore         bool
 }
 
 type AgentConfig struct {
@@ -19,7 +22,14 @@ type AgentConfig struct {
 
 func ParseServerConfig() *ServerConfig {
 	var addressFlag string
+	var storeIntervalFlag int
+	var fileStoragePathFlag string
+	var restoreFlag bool
+
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
+	flag.IntVar(&storeIntervalFlag, "i", 300, "store interval in seconds")
+	flag.StringVar(&fileStoragePathFlag, "f", "/tmp/metrics-db.json", "file storage path")
+	flag.BoolVar(&restoreFlag, "r", true, "restore from file on startup")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -36,7 +46,16 @@ func ParseServerConfig() *ServerConfig {
 	}
 
 	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
-	return &ServerConfig{Address: address}
+	storeInterval := getIntConfigValue("STORE_INTERVAL", storeIntervalFlag, 300)
+	fileStoragePath := getConfigValue("FILE_STORAGE_PATH", fileStoragePathFlag, "/tmp/metrics-db.json")
+	restore := getBoolConfigValue("RESTORE", restoreFlag, true)
+
+	return &ServerConfig{
+		Address:         address,
+		StoreInterval:   storeInterval,
+		FileStoragePath: fileStoragePath,
+		Restore:         restore,
+	}
 }
 
 func ParseAgentConfig() *AgentConfig {
@@ -87,6 +106,18 @@ func getConfigValue(envVar, flagValue, defaultValue string) string {
 func getIntConfigValue(envVar string, flagValue, defaultValue int) int {
 	if envValue := os.Getenv(envVar); envValue != "" {
 		if val, err := strconv.Atoi(envValue); err == nil {
+			return val
+		}
+	}
+	if flagValue != defaultValue {
+		return flagValue
+	}
+	return defaultValue
+}
+
+func getBoolConfigValue(envVar string, flagValue, defaultValue bool) bool {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		if val, err := strconv.ParseBool(envValue); err == nil {
 			return val
 		}
 	}

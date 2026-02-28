@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
@@ -24,6 +25,29 @@ func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
 }
 
 func (s *Server) Run() error {
+	if s.cfg.Restore {
+		if err := s.db.LoadFromFile(); err != nil {
+			fmt.Printf("Error loading from file: %v\n", err)
+		}
+	}
+
+	if s.cfg.StoreInterval == 0 {
+		fmt.Println("Sync save mode enabled")
+	} else {
+		go func() {
+			ticker := time.NewTicker(time.Duration(s.cfg.StoreInterval) * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				if err := s.db.SaveToFile(); err != nil {
+					fmt.Printf("Error saving to file: %v\n", err)
+				} else {
+					fmt.Println("Metrics saved to file")
+				}
+			}
+		}()
+	}
+
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware)
@@ -46,6 +70,10 @@ func (s *Server) Run() error {
 	})
 
 	fmt.Printf("Server starting on http://%s\n", s.cfg.Address)
+	fmt.Printf("Store interval: %d seconds\n", s.cfg.StoreInterval)
+	fmt.Printf("File storage path: %s\n", s.cfg.FileStoragePath)
+	fmt.Printf("Restore on startup: %v\n", s.cfg.Restore)
+
 	return http.ListenAndServe(s.cfg.Address, r)
 }
 
@@ -65,16 +93,30 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		s.db.Gauges[name] = val
+		s.db.UpdateGauge(name, val)
 		w.WriteHeader(http.StatusOK)
+
+		if s.cfg.StoreInterval == 0 {
+			if err := s.db.SaveToFile(); err != nil {
+				fmt.Printf("Error saving to file: %v\n", err)
+			}
+		}
+
 	} else if metricType == "counter" {
 		val, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		s.db.Counters[name] += val
+		s.db.UpdateCounter(name, val)
 		w.WriteHeader(http.StatusOK)
+
+		if s.cfg.StoreInterval == 0 {
+			if err := s.db.SaveToFile(); err != nil {
+				fmt.Printf("Error saving to file: %v\n", err)
+			}
+		}
+
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -114,7 +156,13 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "value is required for gauge", http.StatusBadRequest)
 			return
 		}
-		s.db.Gauges[metrics.ID] = *metrics.Value
+		s.db.UpdateGauge(metrics.ID, *metrics.Value)
+
+		if s.cfg.StoreInterval == 0 {
+			if err := s.db.SaveToFile(); err != nil {
+				fmt.Printf("Error saving to file: %v\n", err)
+			}
+		}
 
 		resp := models.Metrics{
 			ID:    metrics.ID,
@@ -130,13 +178,18 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
 			return
 		}
-		s.db.Counters[metrics.ID] += *metrics.Delta
+		total := s.db.UpdateCounter(metrics.ID, *metrics.Delta)
 
-		delta := s.db.Counters[metrics.ID]
+		if s.cfg.StoreInterval == 0 {
+			if err := s.db.SaveToFile(); err != nil {
+				fmt.Printf("Error saving to file: %v\n", err)
+			}
+		}
+
 		resp := models.Metrics{
 			ID:    metrics.ID,
 			MType: metrics.MType,
-			Delta: &delta,
+			Delta: &total,
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -177,7 +230,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metrics.MType == "gauge" {
-		val, ok := s.db.Gauges[metrics.ID]
+		val, ok := s.db.GetGauge(metrics.ID)
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
@@ -192,7 +245,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 
 	} else if metrics.MType == "counter" {
-		val, ok := s.db.Counters[metrics.ID]
+		val, ok := s.db.GetCounter(metrics.ID)
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
@@ -217,13 +270,13 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if metricType == "gauge" {
-		if val, ok := s.db.Gauges[name]; ok {
+		if val, ok := s.db.GetGauge(name); ok {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
 			return
 		}
 	} else if metricType == "counter" {
-		if val, ok := s.db.Counters[name]; ok {
+		if val, ok := s.db.GetCounter(name); ok {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(strconv.FormatInt(val, 10)))
 			return
@@ -234,14 +287,16 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getAll(w http.ResponseWriter, r *http.Request) {
+	gauges, counters := s.db.GetAll()
+
 	html := `<html><body><h1>Metrics</h1><h2>Gauges</h2><ul>`
 
-	for name, val := range s.db.Gauges {
+	for name, val := range gauges {
 		html += fmt.Sprintf("<li>%s: %f</li>", name, val)
 	}
 	html += `</ul><h2>Counters</h2><ul>`
 
-	for name, val := range s.db.Counters {
+	for name, val := range counters {
 		html += fmt.Sprintf("<li>%s: %d</li>", name, val)
 	}
 	html += `</ul></body></html>`
