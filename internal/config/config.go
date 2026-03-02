@@ -8,18 +8,32 @@ import (
 )
 
 type ServerConfig struct {
-	Address string
+	Address         string
+	StoreInterval   int
+	FileStoragePath string
+	Restore         bool
+	LogLevel        string
 }
 
 type AgentConfig struct {
 	Address        string
 	PollInterval   int
 	ReportInterval int
+	LogLevel       string
 }
 
 func ParseServerConfig() *ServerConfig {
 	var addressFlag string
+	var storeIntervalFlag int
+	var fileStoragePathFlag string
+	var restoreFlag bool
+	var logLevelFlag string
+
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
+	flag.IntVar(&storeIntervalFlag, "i", 300, "store interval in seconds")
+	flag.StringVar(&fileStoragePathFlag, "f", "/tmp/metrics-db.json", "file storage path")
+	flag.BoolVar(&restoreFlag, "r", true, "restore from file on startup")
+	flag.StringVar(&logLevelFlag, "l", "info", "log level (debug, info, warn, error)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -36,17 +50,30 @@ func ParseServerConfig() *ServerConfig {
 	}
 
 	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
-	return &ServerConfig{Address: address}
+	storeInterval := getIntConfigValue("STORE_INTERVAL", storeIntervalFlag, 300)
+	fileStoragePath := getConfigValue("FILE_STORAGE_PATH", fileStoragePathFlag, "/tmp/metrics-db.json")
+	restore := getBoolConfigValue("RESTORE", restoreFlag, true)
+	logLevel := getConfigValue("LOG_LEVEL", logLevelFlag, "info")
+
+	return &ServerConfig{
+		Address:         address,
+		StoreInterval:   storeInterval,
+		FileStoragePath: fileStoragePath,
+		Restore:         restore,
+		LogLevel:        logLevel,
+	}
 }
 
 func ParseAgentConfig() *AgentConfig {
 	var addressFlag string
 	var pollIntervalFlag int
 	var reportIntervalFlag int
+	var logLevelFlag string
 
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
 	flag.IntVar(&pollIntervalFlag, "p", 2, "metrics poll interval (seconds)")
 	flag.IntVar(&reportIntervalFlag, "r", 10, "metrics report interval (seconds)")
+	flag.StringVar(&logLevelFlag, "l", "info", "log level (debug, info, warn, error)")
 
 	flag.Parse()
 
@@ -59,11 +86,13 @@ func ParseAgentConfig() *AgentConfig {
 	address := getConfigValue("ADDRESS", addressFlag, "localhost:8080")
 	pollInterval := getIntConfigValue("POLL_INTERVAL", pollIntervalFlag, 2)
 	reportInterval := getIntConfigValue("REPORT_INTERVAL", reportIntervalFlag, 10)
+	logLevel := getConfigValue("LOG_LEVEL", logLevelFlag, "info")
 
 	return &AgentConfig{
 		Address:        address,
 		PollInterval:   pollInterval,
 		ReportInterval: reportInterval,
+		LogLevel:       logLevel,
 	}
 }
 
@@ -87,6 +116,18 @@ func getConfigValue(envVar, flagValue, defaultValue string) string {
 func getIntConfigValue(envVar string, flagValue, defaultValue int) int {
 	if envValue := os.Getenv(envVar); envValue != "" {
 		if val, err := strconv.Atoi(envValue); err == nil {
+			return val
+		}
+	}
+	if flagValue != defaultValue {
+		return flagValue
+	}
+	return defaultValue
+}
+
+func getBoolConfigValue(envVar string, flagValue, defaultValue bool) bool {
+	if envValue := os.Getenv(envVar); envValue != "" {
+		if val, err := strconv.ParseBool(envValue); err == nil {
 			return val
 		}
 	}
