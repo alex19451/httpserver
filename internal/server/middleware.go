@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"github.com/rs/zerolog"
 )
 
 type responseWriterWrapper struct {
@@ -17,24 +17,26 @@ func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
-func LoggingMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-		ww := &responseWriterWrapper{
-			ResponseWriter: w,
-			statusCode:     http.StatusOK,
-		}
+			ww := &responseWriterWrapper{
+				ResponseWriter: w,
+				statusCode:     http.StatusOK,
+			}
 
-		next.ServeHTTP(ww, r)
+			next.ServeHTTP(ww, r)
 
-		duration := time.Since(start)
+			duration := time.Since(start)
 
-		logrus.WithFields(logrus.Fields{
-			"uri":         r.RequestURI,
-			"method":      r.Method,
-			"duration":    duration.String(),
-			"status_code": ww.statusCode,
-		}).Info("request")
-	})
+			logger.Info().
+				Str("uri", r.RequestURI).
+				Str("method", r.Method).
+				Dur("duration", duration).
+				Int("status_code", ww.statusCode).
+				Msg("request")
+		})
+	}
 }

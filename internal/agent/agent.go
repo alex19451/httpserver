@@ -12,24 +12,30 @@ import (
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
+	"github.com/rs/zerolog"
 )
 
 type Agent struct {
-	cfg *config.AgentConfig
+	cfg    *config.AgentConfig
+	logger zerolog.Logger
 }
 
-func New(cfg *config.AgentConfig) *Agent {
-	return &Agent{cfg: cfg}
+func New(cfg *config.AgentConfig, logger zerolog.Logger) *Agent {
+	return &Agent{
+		cfg:    cfg,
+		logger: logger,
+	}
 }
 
 func (a *Agent) Run() {
 	pollInterval := time.Duration(a.cfg.PollInterval) * time.Second
 	reportInterval := time.Duration(a.cfg.ReportInterval) * time.Second
 
-	fmt.Printf("Agent started\n")
-	fmt.Printf("Server address: %s\n", a.cfg.Address)
-	fmt.Printf("Poll interval: %v\n", pollInterval)
-	fmt.Printf("Report interval: %v\n", reportInterval)
+	a.logger.Info().
+		Str("address", a.cfg.Address).
+		Dur("poll_interval", pollInterval).
+		Dur("report_interval", reportInterval).
+		Msg("agent started")
 
 	count := 0
 	pollTicker := time.NewTicker(pollInterval)
@@ -46,7 +52,7 @@ func (a *Agent) Run() {
 			runtime.ReadMemStats(&mem)
 
 		case <-reportTicker.C:
-			fmt.Println("Sending metrics")
+			a.logger.Info().Msg("sending metrics")
 			a.sendAllWithBackoff(count, mem)
 		}
 	}
@@ -60,26 +66,26 @@ func (a *Agent) sendAllWithBackoff(pollCount int, mem runtime.MemStats) {
 	}
 
 	for _, backoff := range backoffSchedule {
-		if a.sendAll(pollCount, mem) {
+		if err := a.sendAll(pollCount, mem); err == nil {
 			return
 		}
-		fmt.Printf("Failed to send metrics, retrying in %v\n", backoff)
+		a.logger.Warn().
+			Dur("backoff", backoff).
+			Msg("failed to send metrics, retrying")
 		time.Sleep(backoff)
 	}
-	fmt.Println("Failed to send metrics after all retries")
+	a.logger.Error().Msg("failed to send metrics after all retries")
 }
 
-func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) bool {
-	success := true
-
+func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) error {
 	pollCountValue := int64(pollCount)
-	if !a.sendJSON("counter", "PollCount", &pollCountValue, nil) {
-		success = false
+	if err := a.sendJSON("counter", "PollCount", &pollCountValue, nil); err != nil {
+		return err
 	}
 
 	randomValue := rand.Float64()
-	if !a.sendJSON("gauge", "RandomValue", nil, &randomValue) {
-		success = false
+	if err := a.sendJSON("gauge", "RandomValue", nil, &randomValue); err != nil {
+		return err
 	}
 
 	runtimeMetrics := map[string]float64{
@@ -114,15 +120,15 @@ func (a *Agent) sendAll(pollCount int, mem runtime.MemStats) bool {
 
 	for name, value := range runtimeMetrics {
 		val := value
-		if !a.sendJSON("gauge", name, nil, &val) {
-			success = false
+		if err := a.sendJSON("gauge", name, nil, &val); err != nil {
+			return err
 		}
 	}
 
-	return success
+	return nil
 }
 
-func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool {
+func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) error {
 	url := fmt.Sprintf("http://%s/update/", a.cfg.Address)
 
 	metrics := models.Metrics{
@@ -134,25 +140,21 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 
 	data, err := json.Marshal(metrics)
 	if err != nil {
-		fmt.Printf("Error marshaling metric %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("marshal metric %s: %w", name, err)
 	}
 
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	if _, err := gz.Write(data); err != nil {
-		fmt.Printf("Error compressing data for %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("compress data for %s: %w", name, err)
 	}
 	if err := gz.Close(); err != nil {
-		fmt.Printf("Error closing gzip for %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("close gzip for %s: %w", name, err)
 	}
 
 	req, err := http.NewRequest("POST", url, &buf)
 	if err != nil {
-		fmt.Printf("Error creating request for %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("create request for %s: %w", name, err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -161,22 +163,19 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Printf("Error sending metric %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("send metric %s: %w", name, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Error response for %s: %d\n", name, resp.StatusCode)
-		return false
+		return fmt.Errorf("response for %s: %d", name, resp.StatusCode)
 	}
 
 	reader := resp.Body
 	if resp.Header.Get("Content-Encoding") == "gzip" {
 		gz, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			fmt.Printf("Error creating gzip reader for response %s: %v\n", name, err)
-			return false
+			return fmt.Errorf("create gzip reader for %s: %w", name, err)
 		}
 		defer gz.Close()
 		reader = gz
@@ -184,9 +183,13 @@ func (a *Agent) sendJSON(mtype, name string, delta *int64, value *float64) bool 
 
 	var respMetrics models.Metrics
 	if err := json.NewDecoder(reader).Decode(&respMetrics); err != nil {
-		fmt.Printf("Error decoding response for %s: %v\n", name, err)
-		return false
+		return fmt.Errorf("decode response for %s: %w", name, err)
 	}
 
-	return true
+	a.logger.Debug().
+		Str("metric", name).
+		Str("type", mtype).
+		Msg("metric sent successfully")
+
+	return nil
 }

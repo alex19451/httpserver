@@ -13,26 +13,32 @@ import (
 	"github.com/alex19451/httpserver/internal/models"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
+	"github.com/rs/zerolog"
 )
 
 type Server struct {
-	cfg *config.ServerConfig
-	db  *storage.Storage
+	cfg    *config.ServerConfig
+	db     *storage.Storage
+	logger zerolog.Logger
 }
 
-func New(cfg *config.ServerConfig, db *storage.Storage) *Server {
-	return &Server{cfg: cfg, db: db}
+func New(cfg *config.ServerConfig, db *storage.Storage, logger zerolog.Logger) *Server {
+	return &Server{
+		cfg:    cfg,
+		db:     db,
+		logger: logger,
+	}
 }
 
 func (s *Server) Run() error {
 	if s.cfg.Restore {
 		if err := s.db.LoadFromFile(); err != nil {
-			fmt.Printf("Error loading from file: %v\n", err)
+			s.logger.Error().Err(err).Msg("error loading from file")
 		}
 	}
 
 	if s.cfg.StoreInterval == 0 {
-		fmt.Println("Sync save mode enabled")
+		s.logger.Info().Msg("sync save mode enabled")
 	} else {
 		go func() {
 			ticker := time.NewTicker(time.Duration(s.cfg.StoreInterval) * time.Second)
@@ -40,9 +46,9 @@ func (s *Server) Run() error {
 
 			for range ticker.C {
 				if err := s.db.SaveToFile(); err != nil {
-					fmt.Printf("Error saving to file: %v\n", err)
+					s.logger.Error().Err(err).Msg("error saving to file")
 				} else {
-					fmt.Println("Metrics saved to file")
+					s.logger.Info().Msg("metrics saved to file")
 				}
 			}
 		}()
@@ -50,7 +56,7 @@ func (s *Server) Run() error {
 
 	r := chi.NewRouter()
 
-	r.Use(LoggingMiddleware)
+	r.Use(LoggingMiddleware(s.logger))
 	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
@@ -69,10 +75,12 @@ func (s *Server) Run() error {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	})
 
-	fmt.Printf("Server starting on http://%s\n", s.cfg.Address)
-	fmt.Printf("Store interval: %d seconds\n", s.cfg.StoreInterval)
-	fmt.Printf("File storage path: %s\n", s.cfg.FileStoragePath)
-	fmt.Printf("Restore on startup: %v\n", s.cfg.Restore)
+	s.logger.Info().
+		Str("address", s.cfg.Address).
+		Int("store_interval", s.cfg.StoreInterval).
+		Str("file_path", s.cfg.FileStoragePath).
+		Bool("restore", s.cfg.Restore).
+		Msg("server starting")
 
 	return http.ListenAndServe(s.cfg.Address, r)
 }
@@ -98,7 +106,7 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 
 		if s.cfg.StoreInterval == 0 {
 			if err := s.db.SaveToFile(); err != nil {
-				fmt.Printf("Error saving to file: %v\n", err)
+				s.logger.Error().Err(err).Msg("error saving to file")
 			}
 		}
 
@@ -113,7 +121,7 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 
 		if s.cfg.StoreInterval == 0 {
 			if err := s.db.SaveToFile(); err != nil {
-				fmt.Printf("Error saving to file: %v\n", err)
+				s.logger.Error().Err(err).Msg("error saving to file")
 			}
 		}
 
@@ -160,7 +168,7 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 
 		if s.cfg.StoreInterval == 0 {
 			if err := s.db.SaveToFile(); err != nil {
-				fmt.Printf("Error saving to file: %v\n", err)
+				s.logger.Error().Err(err).Msg("error saving to file")
 			}
 		}
 
@@ -182,7 +190,7 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 
 		if s.cfg.StoreInterval == 0 {
 			if err := s.db.SaveToFile(); err != nil {
-				fmt.Printf("Error saving to file: %v\n", err)
+				s.logger.Error().Err(err).Msg("error saving to file")
 			}
 		}
 
