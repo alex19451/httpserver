@@ -117,6 +117,9 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 		}
 		gauges[name] = value
 	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
 
 	counters := make(map[string]int64)
 	rows, err = s.db.Query("SELECT name, value FROM counters")
@@ -132,6 +135,9 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 			return nil, nil, err
 		}
 		counters[name] = value
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
 	}
 
 	return gauges, counters, nil
