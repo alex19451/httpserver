@@ -1,76 +1,99 @@
 package storage
 
 type Storage struct {
-	Gauges   map[string]float64
-	Counters map[string]int64
-	file     *FileStorage
+	inMemory *InMemoryStorage
+	db       *DBStorage
 }
 
 func New() *Storage {
 	return &Storage{
-		Gauges:   make(map[string]float64),
-		Counters: make(map[string]int64),
+		inMemory: NewInMemory(),
+		db:       nil,
 	}
 }
 
 func NewWithFile(filePath string) *Storage {
 	return &Storage{
-		Gauges:   make(map[string]float64),
-		Counters: make(map[string]int64),
-		file:     NewFileStorage(filePath),
+		inMemory: NewInMemoryWithFile(filePath),
+		db:       nil,
 	}
 }
 
-func (s *Storage) UpdateGauge(name string, value float64) {
-	s.Gauges[name] = value
-}
-
-func (s *Storage) GetGauge(name string) (float64, bool) {
-	val, ok := s.Gauges[name]
-	return val, ok
-}
-
-func (s *Storage) UpdateCounter(name string, delta int64) int64 {
-	s.Counters[name] += delta
-	return s.Counters[name]
-}
-
-func (s *Storage) GetCounter(name string) (int64, bool) {
-	val, ok := s.Counters[name]
-	return val, ok
-}
-
-func (s *Storage) GetAll() (map[string]float64, map[string]int64) {
-	gauges := make(map[string]float64, len(s.Gauges))
-	for k, v := range s.Gauges {
-		gauges[k] = v
+func NewWithDB(dsn string) (*Storage, error) {
+	db, err := NewDBStorage(dsn)
+	if err != nil {
+		return nil, err
 	}
 
-	counters := make(map[string]int64, len(s.Counters))
-	for k, v := range s.Counters {
-		counters[k] = v
-	}
+	return &Storage{
+		inMemory: nil,
+		db:       db,
+	}, nil
+}
 
-	return gauges, counters
+func (s *Storage) UpdateGauge(name string, value float64) error {
+	if s.db != nil {
+		return s.db.UpdateGauge(name, value)
+	}
+	s.inMemory.UpdateGauge(name, value)
+	return nil
+}
+
+func (s *Storage) GetGauge(name string) (float64, bool, error) {
+	if s.db != nil {
+		return s.db.GetGauge(name)
+	}
+	val, ok := s.inMemory.GetGauge(name)
+	return val, ok, nil
+}
+
+func (s *Storage) UpdateCounter(name string, delta int64) (int64, error) {
+	if s.db != nil {
+		return s.db.UpdateCounter(name, delta)
+	}
+	return s.inMemory.UpdateCounter(name, delta), nil
+}
+
+func (s *Storage) GetCounter(name string) (int64, bool, error) {
+	if s.db != nil {
+		return s.db.GetCounter(name)
+	}
+	val, ok := s.inMemory.GetCounter(name)
+	return val, ok, nil
+}
+
+func (s *Storage) GetAll() (map[string]float64, map[string]int64, error) {
+	if s.db != nil {
+		return s.db.GetAll()
+	}
+	gauges, counters := s.inMemory.GetAll()
+	return gauges, counters, nil
 }
 
 func (s *Storage) SaveToFile() error {
-	if s.file == nil {
-		return nil
+	if s.inMemory != nil {
+		return s.inMemory.SaveToFile()
 	}
-	return s.file.Save(s.Gauges, s.Counters)
+	return nil
 }
 
 func (s *Storage) LoadFromFile() error {
-	if s.file == nil {
-		return nil
+	if s.inMemory != nil {
+		return s.inMemory.LoadFromFile()
 	}
-	gauges, counters, err := s.file.Load()
-	if err != nil {
-		return err
-	}
+	return nil
+}
 
-	s.Gauges = gauges
-	s.Counters = counters
+func (s *Storage) Ping() error {
+	if s.db != nil {
+		return s.db.Ping()
+	}
+	return nil
+}
+
+func (s *Storage) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
 	return nil
 }

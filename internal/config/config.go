@@ -13,6 +13,7 @@ type ServerConfig struct {
 	FileStoragePath string
 	Restore         bool
 	LogLevel        string
+	DatabaseDSN     string
 }
 
 type AgentConfig struct {
@@ -28,12 +29,14 @@ func ParseServerConfig() *ServerConfig {
 	var fileStoragePathFlag string
 	var restoreFlag bool
 	var logLevelFlag string
+	var databaseDSNFlag string
 
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
 	flag.IntVar(&storeIntervalFlag, "i", 300, "store interval in seconds")
 	flag.StringVar(&fileStoragePathFlag, "f", "/tmp/metrics-db.json", "file storage path")
 	flag.BoolVar(&restoreFlag, "r", true, "restore from file on startup")
 	flag.StringVar(&logLevelFlag, "l", "info", "log level (debug, info, warn, error)")
+	flag.StringVar(&databaseDSNFlag, "d", "", "database DSN (postgres://user:password@host:port/dbname)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -54,6 +57,7 @@ func ParseServerConfig() *ServerConfig {
 	fileStoragePath := getConfigValue("FILE_STORAGE_PATH", fileStoragePathFlag, "/tmp/metrics-db.json")
 	restore := getBoolConfigValue("RESTORE", restoreFlag, true)
 	logLevel := getConfigValue("LOG_LEVEL", logLevelFlag, "info")
+	databaseDSN := getConfigValue("DATABASE_DSN", databaseDSNFlag, "")
 
 	return &ServerConfig{
 		Address:         address,
@@ -61,6 +65,7 @@ func ParseServerConfig() *ServerConfig {
 		FileStoragePath: fileStoragePath,
 		Restore:         restore,
 		LogLevel:        logLevel,
+		DatabaseDSN:     databaseDSN,
 	}
 }
 

@@ -34,9 +34,21 @@ func main() {
 	}
 
 	var db *storage.Storage
-	if cfg.FileStoragePath != "" {
+	var err error
+
+	if cfg.DatabaseDSN != "" {
+		logger.Info().Msg("using database storage")
+		db, err = storage.NewWithDB(cfg.DatabaseDSN)
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to connect to database")
+			os.Exit(1)
+		}
+		defer db.Close()
+	} else if cfg.FileStoragePath != "" {
+		logger.Info().Msg("using file storage")
 		db = storage.NewWithFile(cfg.FileStoragePath)
 	} else {
+		logger.Info().Msg("using in-memory storage")
 		db = storage.New()
 	}
 
