@@ -31,15 +31,15 @@ func New(cfg *config.ServerConfig, db *storage.Storage, logger zerolog.Logger) *
 }
 
 func (s *Server) Run() error {
-	if s.cfg.Restore {
+	if s.cfg.Restore && s.cfg.FileStoragePath != "" {
 		if err := s.db.LoadFromFile(); err != nil {
 			s.logger.Error().Err(err).Msg("error loading from file")
 		}
 	}
 
-	if s.cfg.StoreInterval == 0 {
+	if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
 		s.logger.Info().Msg("sync save mode enabled")
-	} else {
+	} else if s.cfg.StoreInterval > 0 && s.cfg.FileStoragePath != "" {
 		go func() {
 			ticker := time.NewTicker(time.Duration(s.cfg.StoreInterval) * time.Second)
 			defer ticker.Stop()
@@ -65,6 +65,7 @@ func (s *Server) Run() error {
 	r.Post("/update/", s.updateJSON)
 	r.Post("/value/", s.valueJSON)
 
+	r.Get("/ping", s.ping)
 	r.Get("/", s.getAll)
 
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -80,9 +81,19 @@ func (s *Server) Run() error {
 		Int("store_interval", s.cfg.StoreInterval).
 		Str("file_path", s.cfg.FileStoragePath).
 		Bool("restore", s.cfg.Restore).
+		Str("database_dsn", s.cfg.DatabaseDSN).
 		Msg("server starting")
 
 	return http.ListenAndServe(s.cfg.Address, r)
+}
+
+func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
+	if err := s.db.Ping(); err != nil {
+		s.logger.Error().Err(err).Msg("ping failed")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) update(w http.ResponseWriter, r *http.Request) {
@@ -101,10 +112,14 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		s.db.UpdateGauge(name, val)
+		if err := s.db.UpdateGauge(name, val); err != nil {
+			s.logger.Error().Err(err).Msg("update gauge failed")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 
-		if s.cfg.StoreInterval == 0 {
+		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
 			if err := s.db.SaveToFile(); err != nil {
 				s.logger.Error().Err(err).Msg("error saving to file")
 			}
@@ -116,10 +131,14 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		s.db.UpdateCounter(name, val)
+		if _, err := s.db.UpdateCounter(name, val); err != nil {
+			s.logger.Error().Err(err).Msg("update counter failed")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 
-		if s.cfg.StoreInterval == 0 {
+		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
 			if err := s.db.SaveToFile(); err != nil {
 				s.logger.Error().Err(err).Msg("error saving to file")
 			}
@@ -164,9 +183,13 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "value is required for gauge", http.StatusBadRequest)
 			return
 		}
-		s.db.UpdateGauge(metrics.ID, *metrics.Value)
+		if err := s.db.UpdateGauge(metrics.ID, *metrics.Value); err != nil {
+			s.logger.Error().Err(err).Msg("update gauge failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 
-		if s.cfg.StoreInterval == 0 {
+		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
 			if err := s.db.SaveToFile(); err != nil {
 				s.logger.Error().Err(err).Msg("error saving to file")
 			}
@@ -186,9 +209,14 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
 			return
 		}
-		total := s.db.UpdateCounter(metrics.ID, *metrics.Delta)
+		total, err := s.db.UpdateCounter(metrics.ID, *metrics.Delta)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("update counter failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 
-		if s.cfg.StoreInterval == 0 {
+		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
 			if err := s.db.SaveToFile(); err != nil {
 				s.logger.Error().Err(err).Msg("error saving to file")
 			}
@@ -238,7 +266,12 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if metrics.MType == "gauge" {
-		val, ok := s.db.GetGauge(metrics.ID)
+		val, ok, err := s.db.GetGauge(metrics.ID)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("get gauge failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
@@ -253,7 +286,12 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(resp)
 
 	} else if metrics.MType == "counter" {
-		val, ok := s.db.GetCounter(metrics.ID)
+		val, ok, err := s.db.GetCounter(metrics.ID)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("get counter failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
 		if !ok {
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
@@ -278,24 +316,45 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 
 	if metricType == "gauge" {
-		if val, ok := s.db.GetGauge(name); ok {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
+		val, ok, err := s.db.GetGauge(name)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("get gauge failed")
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-	} else if metricType == "counter" {
-		if val, ok := s.db.GetCounter(name); ok {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(strconv.FormatInt(val, 10)))
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-	}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
 
-	w.WriteHeader(http.StatusNotFound)
+	} else if metricType == "counter" {
+		val, ok, err := s.db.GetCounter(name)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("get counter failed")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(strconv.FormatInt(val, 10)))
+
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
 }
 
 func (s *Server) getAll(w http.ResponseWriter, r *http.Request) {
-	gauges, counters := s.db.GetAll()
+	gauges, counters, err := s.db.GetAll()
+	if err != nil {
+		s.logger.Error().Err(err).Msg("get all metrics failed")
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 	html := `<html><body><h1>Metrics</h1><h2>Gauges</h2><ul>`
 
