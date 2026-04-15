@@ -2,20 +2,22 @@ package storage
 
 type Storage struct {
 	inMemory *InMemoryStorage
+	file     *InMemoryStorage
 	db       *DBStorage
+	mode     string
 }
 
 func New() *Storage {
 	return &Storage{
 		inMemory: NewInMemory(),
-		db:       nil,
+		mode:     "memory",
 	}
 }
 
 func NewWithFile(filePath string) *Storage {
 	return &Storage{
-		inMemory: NewInMemoryWithFile(filePath),
-		db:       nil,
+		file: NewInMemoryWithFile(filePath),
+		mode: "file",
 	}
 }
 
@@ -24,75 +26,98 @@ func NewWithDB(dsn string) (*Storage, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return &Storage{
-		inMemory: nil,
-		db:       db,
+		db:   db,
+		mode: "db",
 	}, nil
 }
 
 func (s *Storage) UpdateGauge(name string, value float64) error {
-	if s.db != nil {
+	switch s.mode {
+	case "db":
 		return s.db.UpdateGauge(name, value)
+	case "file":
+		s.file.UpdateGauge(name, value)
+		return nil
+	default:
+		s.inMemory.UpdateGauge(name, value)
+		return nil
 	}
-	s.inMemory.UpdateGauge(name, value)
-	return nil
 }
 
 func (s *Storage) GetGauge(name string) (float64, bool, error) {
-	if s.db != nil {
+	switch s.mode {
+	case "db":
 		return s.db.GetGauge(name)
+	case "file":
+		val, ok := s.file.GetGauge(name)
+		return val, ok, nil
+	default:
+		val, ok := s.inMemory.GetGauge(name)
+		return val, ok, nil
 	}
-	val, ok := s.inMemory.GetGauge(name)
-	return val, ok, nil
 }
 
 func (s *Storage) UpdateCounter(name string, delta int64) (int64, error) {
-	if s.db != nil {
+	switch s.mode {
+	case "db":
 		return s.db.UpdateCounter(name, delta)
+	case "file":
+		return s.file.UpdateCounter(name, delta), nil
+	default:
+		return s.inMemory.UpdateCounter(name, delta), nil
 	}
-	return s.inMemory.UpdateCounter(name, delta), nil
 }
 
 func (s *Storage) GetCounter(name string) (int64, bool, error) {
-	if s.db != nil {
+	switch s.mode {
+	case "db":
 		return s.db.GetCounter(name)
+	case "file":
+		val, ok := s.file.GetCounter(name)
+		return val, ok, nil
+	default:
+		val, ok := s.inMemory.GetCounter(name)
+		return val, ok, nil
 	}
-	val, ok := s.inMemory.GetCounter(name)
-	return val, ok, nil
 }
 
 func (s *Storage) GetAll() (map[string]float64, map[string]int64, error) {
-	if s.db != nil {
+	switch s.mode {
+	case "db":
 		return s.db.GetAll()
+	case "file":
+		gauges, counters := s.file.GetAll()
+		return gauges, counters, nil
+	default:
+		gauges, counters := s.inMemory.GetAll()
+		return gauges, counters, nil
 	}
-	gauges, counters := s.inMemory.GetAll()
-	return gauges, counters, nil
 }
 
 func (s *Storage) SaveToFile() error {
-	if s.inMemory != nil {
-		return s.inMemory.SaveToFile()
+	if s.mode == "file" {
+		return s.file.SaveToFile()
 	}
 	return nil
 }
 
 func (s *Storage) LoadFromFile() error {
-	if s.inMemory != nil {
-		return s.inMemory.LoadFromFile()
+	if s.mode == "file" {
+		return s.file.LoadFromFile()
 	}
 	return nil
 }
 
 func (s *Storage) Ping() error {
-	if s.db != nil {
+	if s.mode == "db" {
 		return s.db.Ping()
 	}
 	return nil
 }
 
 func (s *Storage) Close() error {
-	if s.db != nil {
+	if s.mode == "db" {
 		return s.db.Close()
 	}
 	return nil

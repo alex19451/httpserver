@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -12,14 +13,14 @@ type DBStorage struct {
 }
 
 func NewDBStorage(dsn string) (*DBStorage, error) {
-	if dsn == "" {
-		return nil, nil
-	}
-
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Hour)
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping database: %w", err)
@@ -33,32 +34,34 @@ func NewDBStorage(dsn string) (*DBStorage, error) {
 }
 
 func createTables(db *sql.DB) error {
-	query := `
-	CREATE TABLE IF NOT EXISTS gauges (
-		name TEXT PRIMARY KEY,
-		value DOUBLE PRECISION NOT NULL,
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS gauges (
+			name VARCHAR(255) PRIMARY KEY,
+			value DOUBLE PRECISION NOT NULL,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`,
+		`CREATE TABLE IF NOT EXISTS counters (
+			name VARCHAR(255) PRIMARY KEY,
+			value BIGINT NOT NULL,
+			updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+		)`,
+	}
 
-	CREATE TABLE IF NOT EXISTS counters (
-		name TEXT PRIMARY KEY,
-		value BIGINT NOT NULL,
-		updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-	);
-	`
-
-	_, err := db.Exec(query)
-	return err
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *DBStorage) UpdateGauge(name string, value float64) error {
 	query := `
-	INSERT INTO gauges (name, value, updated_at)
-	VALUES ($1, $2, NOW())
-	ON CONFLICT (name) DO UPDATE
-	SET value = $2, updated_at = NOW()
+		INSERT INTO gauges (name, value, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (name) DO UPDATE
+		SET value = EXCLUDED.value, updated_at = NOW()
 	`
-
 	_, err := s.db.Exec(query, name, value)
 	return err
 }
@@ -77,13 +80,12 @@ func (s *DBStorage) GetGauge(name string) (float64, bool, error) {
 
 func (s *DBStorage) UpdateCounter(name string, delta int64) (int64, error) {
 	query := `
-	INSERT INTO counters (name, value, updated_at)
-	VALUES ($1, $2, NOW())
-	ON CONFLICT (name) DO UPDATE
-	SET value = counters.value + $2, updated_at = NOW()
-	RETURNING value
+		INSERT INTO counters (name, value, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (name) DO UPDATE
+		SET value = counters.value + EXCLUDED.value, updated_at = NOW()
+		RETURNING value
 	`
-
 	var value int64
 	err := s.db.QueryRow(query, name, delta).Scan(&value)
 	return value, err
@@ -117,9 +119,6 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 		}
 		gauges[name] = value
 	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
-	}
 
 	counters := make(map[string]int64)
 	rows, err = s.db.Query("SELECT name, value FROM counters")
@@ -135,9 +134,6 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 			return nil, nil, err
 		}
 		counters[name] = value
-	}
-	if err := rows.Err(); err != nil {
-		return nil, nil, err
 	}
 
 	return gauges, counters, nil
