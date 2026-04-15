@@ -36,23 +36,17 @@ func main() {
 	var db *storage.Storage
 	var err error
 
-	// Приоритет: БД -> файл -> память
 	if cfg.DatabaseDSN != "" {
 		logger.Info().Msg("using database storage")
 		db, err = storage.NewWithDB(cfg.DatabaseDSN)
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to connect to database, falling back to file/memory")
-		} else {
-			defer db.Close()
+			logger.Fatal().Err(err).Msg("failed to connect to database")
 		}
-	}
-
-	if db == nil && cfg.FileStoragePath != "" {
+		defer db.Close()
+	} else if cfg.FileStoragePath != "" {
 		logger.Info().Str("path", cfg.FileStoragePath).Msg("using file storage")
 		db = storage.NewWithFile(cfg.FileStoragePath)
-	}
-
-	if db == nil {
+	} else {
 		logger.Info().Msg("using in-memory storage")
 		db = storage.New()
 	}
