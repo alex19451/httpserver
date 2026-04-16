@@ -1,6 +1,7 @@
 package retry
 
 import (
+	"database/sql"
 	"errors"
 	"net"
 	"syscall"
@@ -28,6 +29,10 @@ func (e *RetriableError) Unwrap() error {
 
 func IsRetriable(err error) bool {
 	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, sql.ErrNoRows) {
 		return false
 	}
 
@@ -68,6 +73,10 @@ func DoWithRetry(fn func() error) error {
 		err := fn()
 		if err == nil {
 			return nil
+		}
+
+		if errors.Is(err, sql.ErrNoRows) {
+			return err
 		}
 
 		errs = append(errs, err)
