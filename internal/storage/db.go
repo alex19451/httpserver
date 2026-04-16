@@ -141,8 +141,6 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 	counters := make(map[string]int64)
 
 	err := retry.DoWithRetry(func() error {
-		var errs []error
-
 		rows, err := s.db.Query("SELECT name, value FROM gauges")
 		if err != nil {
 			return err
@@ -153,10 +151,12 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 			var name string
 			var value float64
 			if err := rows.Scan(&name, &value); err != nil {
-				errs = append(errs, err)
-				continue
+				return err
 			}
 			gauges[name] = value
+		}
+		if err := rows.Err(); err != nil {
+			return err
 		}
 
 		rows, err = s.db.Query("SELECT name, value FROM counters")
@@ -169,15 +169,14 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 			var name string
 			var value int64
 			if err := rows.Scan(&name, &value); err != nil {
-				errs = append(errs, err)
-				continue
+				return err
 			}
 			counters[name] = value
 		}
-
-		if len(errs) > 0 {
-			return errors.Join(errs...)
+		if err := rows.Err(); err != nil {
+			return err
 		}
+
 		return nil
 	})
 

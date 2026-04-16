@@ -63,6 +63,7 @@ func (s *Server) Run() error {
 	r.Get("/value/{type}/{name}", s.getValue)
 
 	r.Post("/update/", s.updateJSON)
+	r.Post("/updates/", s.batchUpdate)
 	r.Post("/value/", s.valueJSON)
 
 	r.Get("/ping", s.ping)
@@ -235,6 +236,73 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
 		return
 	}
+}
+
+func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
+	body := r.Body
+	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
+		gz, err := gzip.NewReader(r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer gz.Close()
+		body = gz
+	}
+
+	if r.Header.Get("Content-Type") != "application/json" {
+		http.Error(w, "Content-Type must be application/json", http.StatusBadRequest)
+		return
+	}
+
+	var metrics []models.Metrics
+	if err := json.NewDecoder(body).Decode(&metrics); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var errs []error
+
+	for _, metric := range metrics {
+		if metric.ID == "" || metric.MType == "" {
+			errs = append(errs, fmt.Errorf("id and type are required for metric"))
+			continue
+		}
+
+		if metric.MType == "gauge" {
+			if metric.Value == nil {
+				errs = append(errs, fmt.Errorf("value is required for gauge %s", metric.ID))
+				continue
+			}
+			if err := s.db.UpdateGauge(metric.ID, *metric.Value); err != nil {
+				errs = append(errs, err)
+			}
+		} else if metric.MType == "counter" {
+			if metric.Delta == nil {
+				errs = append(errs, fmt.Errorf("delta is required for counter %s", metric.ID))
+				continue
+			}
+			if _, err := s.db.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+				errs = append(errs, err)
+			}
+		} else {
+			errs = append(errs, fmt.Errorf("invalid metric type %s", metric.MType))
+		}
+	}
+
+	if len(errs) > 0 {
+		s.logger.Error().Errs("errors", errs).Msg("batch update failed")
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
+		if err := s.db.SaveToFile(); err != nil {
+			s.logger.Error().Err(err).Msg("error saving to file")
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
