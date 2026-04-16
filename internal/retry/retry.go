@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -44,10 +43,6 @@ func IsRetriable(err error) bool {
 			pgerrcode.ProtocolViolation:
 			return true
 		}
-	}
-
-	if errors.Is(err, pgx.ErrDeadlocked) {
-		return true
 	}
 
 	var netErr net.Error
