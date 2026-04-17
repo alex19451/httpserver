@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alex19451/httpserver/internal/models"
 	"github.com/alex19451/httpserver/internal/retry"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -185,6 +186,50 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 	}
 
 	return gauges, counters, nil
+}
+
+func (s *DBStorage) BatchUpdate(metrics []models.Metrics) error {
+	return retry.DoWithRetry(func() error {
+		tx, err := s.db.Begin()
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback()
+
+		for _, metric := range metrics {
+			if metric.MType == "gauge" {
+				if metric.Value == nil {
+					return fmt.Errorf("value required for gauge %s", metric.ID)
+				}
+				query := `
+					INSERT INTO gauges (name, value, updated_at)
+					VALUES ($1, $2, NOW())
+					ON CONFLICT (name) DO UPDATE
+					SET value = EXCLUDED.value, updated_at = NOW()
+				`
+				if _, err := tx.Exec(query, metric.ID, *metric.Value); err != nil {
+					return err
+				}
+			} else if metric.MType == "counter" {
+				if metric.Delta == nil {
+					return fmt.Errorf("delta required for counter %s", metric.ID)
+				}
+				query := `
+					INSERT INTO counters (name, value, updated_at)
+					VALUES ($1, $2, NOW())
+					ON CONFLICT (name) DO UPDATE
+					SET value = counters.value + EXCLUDED.value, updated_at = NOW()
+				`
+				if _, err := tx.Exec(query, metric.ID, *metric.Delta); err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("invalid type %s", metric.MType)
+			}
+		}
+
+		return tx.Commit()
+	})
 }
 
 func (s *DBStorage) Ping() error {

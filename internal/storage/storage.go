@@ -1,5 +1,11 @@
 package storage
 
+import (
+	"fmt"
+
+	"github.com/alex19451/httpserver/internal/models"
+)
+
 type Storage struct {
 	inMemory *InMemoryStorage
 	file     *InMemoryStorage
@@ -121,4 +127,15 @@ func (s *Storage) Close() error {
 		return s.db.Close()
 	}
 	return nil
+}
+
+func (s *Storage) IsDB() bool {
+	return s.mode == "db"
+}
+
+func (s *Storage) BatchUpdate(metrics []models.Metrics) error {
+	if s.mode == "db" {
+		return s.db.BatchUpdate(metrics)
+	}
+	return fmt.Errorf("batch update only supported for database storage")
 }

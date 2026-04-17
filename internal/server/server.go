@@ -261,39 +261,36 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var errs []error
-
-	for _, metric := range metrics {
-		if metric.ID == "" || metric.MType == "" {
-			errs = append(errs, fmt.Errorf("id and type are required for metric"))
-			continue
-		}
-
-		if metric.MType == "gauge" {
-			if metric.Value == nil {
-				errs = append(errs, fmt.Errorf("value is required for gauge %s", metric.ID))
-				continue
-			}
-			if err := s.db.UpdateGauge(metric.ID, *metric.Value); err != nil {
-				errs = append(errs, err)
-			}
-		} else if metric.MType == "counter" {
-			if metric.Delta == nil {
-				errs = append(errs, fmt.Errorf("delta is required for counter %s", metric.ID))
-				continue
-			}
-			if _, err := s.db.UpdateCounter(metric.ID, *metric.Delta); err != nil {
-				errs = append(errs, err)
-			}
-		} else {
-			errs = append(errs, fmt.Errorf("invalid metric type %s", metric.MType))
-		}
+	if len(metrics) == 0 {
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
-	if len(errs) > 0 {
-		s.logger.Error().Errs("errors", errs).Msg("batch update failed")
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if s.db.IsDB() {
+		if err := s.db.BatchUpdate(metrics); err != nil {
+			s.logger.Error().Err(err).Msg("batch update failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		for _, metric := range metrics {
+			if metric.MType == "gauge" {
+				if metric.Value == nil {
+					http.Error(w, fmt.Sprintf("value required for gauge %s", metric.ID), http.StatusBadRequest)
+					return
+				}
+				s.db.UpdateGauge(metric.ID, *metric.Value)
+			} else if metric.MType == "counter" {
+				if metric.Delta == nil {
+					http.Error(w, fmt.Sprintf("delta required for counter %s", metric.ID), http.StatusBadRequest)
+					return
+				}
+				s.db.UpdateCounter(metric.ID, *metric.Delta)
+			} else {
+				http.Error(w, fmt.Sprintf("invalid type %s", metric.MType), http.StatusBadRequest)
+				return
+			}
+		}
 	}
 
 	if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
