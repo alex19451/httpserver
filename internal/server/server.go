@@ -11,6 +11,7 @@ import (
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
+	"github.com/alex19451/httpserver/internal/signature"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -57,8 +58,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	r.Use(GzipMiddleware)
 	r.Use(SignatureMiddleware(s.cfg.Key))
+	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -208,6 +209,12 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
+
 	} else if metrics.MType == "counter" {
 		if metrics.Delta == nil {
 			http.Error(w, "delta is required for counter", http.StatusBadRequest)
@@ -235,6 +242,12 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
@@ -305,6 +318,12 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	if s.cfg.Key != "" {
+		respBytes, _ := json.Marshal(map[string]string{"status": "ok"})
+		hash := signature.CalculateHash(respBytes, s.cfg.Key)
+		w.Header().Set("HashSHA256", hash)
+	}
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
@@ -356,6 +375,12 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
 		return
 
 	} else if metrics.MType == "counter" {
@@ -379,6 +404,12 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
 		return
 
 	} else {
