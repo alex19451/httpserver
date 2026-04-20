@@ -56,6 +56,7 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 				return
 			}
 
+			// Проверяем подпись запроса
 			expectedHash := r.Header.Get("HashSHA256")
 			if expectedHash == "" {
 				http.Error(w, "missing HashSHA256 header", http.StatusBadRequest)
@@ -76,6 +77,7 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
+			// Оборачиваем ResponseWriter для захвата ответа
 			ww := &responseWriterWithHash{
 				ResponseWriter: w,
 				body:           &bytes.Buffer{},
