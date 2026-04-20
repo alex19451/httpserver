@@ -10,15 +10,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type responseWriterWithHash struct {
+type responseWriterWrapper struct {
 	http.ResponseWriter
 	body    *bytes.Buffer
-	key     string
 	status  int
 	written bool
 }
 
-func (w *responseWriterWithHash) WriteHeader(statusCode int) {
+func (w *responseWriterWrapper) WriteHeader(statusCode int) {
 	if w.written {
 		return
 	}
@@ -27,10 +26,8 @@ func (w *responseWriterWithHash) WriteHeader(statusCode int) {
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
-func (w *responseWriterWithHash) Write(b []byte) (int, error) {
-	if w.body != nil {
-		w.body.Write(b)
-	}
+func (w *responseWriterWrapper) Write(b []byte) (int, error) {
+	w.body.Write(b)
 	return w.ResponseWriter.Write(b)
 }
 
@@ -56,7 +53,6 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 				return
 			}
 
-			// Проверяем подпись запроса
 			expectedHash := r.Header.Get("HashSHA256")
 			if expectedHash == "" {
 				http.Error(w, "missing HashSHA256 header", http.StatusBadRequest)
@@ -77,28 +73,21 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-			// Оборачиваем ResponseWriter для захвата ответа
-			ww := &responseWriterWithHash{
+			ww := &responseWriterWrapper{
 				ResponseWriter: w,
 				body:           &bytes.Buffer{},
-				key:            key,
 				written:        false,
 			}
 
 			next.ServeHTTP(ww, r)
 
-			// Добавляем подпись ответа
-			if ww.body.Len() > 0 {
-				sign := signature.CalculateHash(ww.body.Bytes(), key)
-				w.Header().Set("HashSHA256", sign)
-			}
+			sign := signature.CalculateHash(ww.body.Bytes(), key)
+			w.Header().Set("HashSHA256", sign)
 
 			if !ww.written {
 				w.WriteHeader(ww.status)
 			}
-			if ww.body.Len() > 0 {
-				w.Write(ww.body.Bytes())
-			}
+			w.Write(ww.body.Bytes())
 		})
 	}
 }

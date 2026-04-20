@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"runtime"
@@ -161,11 +162,23 @@ func (a *Agent) sendBatchRequest(metrics []models.Metrics) error {
 		req.Header.Set("HashSHA256", hash)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send batch: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if a.cfg.Key != "" {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("read response body: %w", err)
+		}
+		expectedHash := resp.Header.Get("HashSHA256")
+		if expectedHash != "" && !signature.VerifyHash(bodyBytes, expectedHash, a.cfg.Key) {
+			return fmt.Errorf("invalid response signature")
+		}
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("batch status: %d", resp.StatusCode)
