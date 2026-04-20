@@ -11,6 +11,7 @@ import (
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
+	"github.com/alex19451/httpserver/internal/signature"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -204,6 +205,13 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			Value: metrics.Value,
 		}
 		w.Header().Set("Content-Type", "application/json")
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 
@@ -231,6 +239,13 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			Delta: &total,
 		}
 		w.Header().Set("Content-Type", "application/json")
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(resp)
 
@@ -301,12 +316,18 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.cfg.Key != "" {
+		respBytes, _ := json.Marshal(map[string]string{"status": "ok"})
+		hash := signature.CalculateHash(respBytes, s.cfg.Key)
+		w.Header().Set("HashSHA256", hash)
+	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
-	s.logger.Info().Msg("valueJSON called")
-
 	body := r.Body
 	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 		gz, err := gzip.NewReader(r.Body)
@@ -351,11 +372,17 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			MType: metrics.MType,
 			Value: &val,
 		}
+
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			s.logger.Error().Err(err).Msg("encode response failed")
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else if metrics.MType == "counter" {
@@ -375,11 +402,17 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			MType: metrics.MType,
 			Delta: &val,
 		}
+
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			s.logger.Error().Err(err).Msg("encode response failed")
+
+		if s.cfg.Key != "" {
+			respBytes, _ := json.Marshal(resp)
+			hash := signature.CalculateHash(respBytes, s.cfg.Key)
+			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else {
