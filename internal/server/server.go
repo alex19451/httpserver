@@ -58,7 +58,7 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	r.Use(SignatureMiddleware(s.cfg.Key))
+	//r.Use(SignatureMiddleware(s.cfg.Key))
 	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)

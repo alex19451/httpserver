@@ -79,6 +79,7 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 			if rec.body.Len() > 0 {
 				sign := signature.CalculateHash(rec.body.Bytes(), key)
 				w.Header().Set("HashSHA256", sign)
+				w.Write(rec.body.Bytes())
 			}
 		})
 	}
