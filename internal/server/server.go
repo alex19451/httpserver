@@ -57,8 +57,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	r.Use(SignatureMiddleware(s.cfg.Key))
 	r.Use(GzipMiddleware)
+	r.Use(SignatureMiddleware(s.cfg.Key))
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -354,6 +354,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			s.logger.Error().Err(err).Msg("encode response failed")
 		}
+		return
 
 	} else if metrics.MType == "counter" {
 		val, ok, err := s.db.GetCounter(metrics.ID)
@@ -377,6 +378,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			s.logger.Error().Err(err).Msg("encode response failed")
 		}
+		return
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
