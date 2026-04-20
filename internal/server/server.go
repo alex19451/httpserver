@@ -11,7 +11,6 @@ import (
 
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
-	"github.com/alex19451/httpserver/internal/signature"
 	"github.com/alex19451/httpserver/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/rs/zerolog"
@@ -58,8 +57,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
+	r.Use(GzipMiddleware)
 	r.Use(SignatureMiddleware(s.cfg.Key))
-	// r.Use(GzipMiddleware) - отключен для совместимости с подписями
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -206,21 +205,8 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-
-		respBytes, err := json.Marshal(resp)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("marshal response failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		if s.cfg.Key != "" {
-			hash := signature.CalculateHash(respBytes, s.cfg.Key)
-			w.Header().Set("HashSHA256", hash)
-		}
-
 		w.WriteHeader(http.StatusOK)
-		w.Write(respBytes)
+		json.NewEncoder(w).Encode(resp)
 
 	} else if metrics.MType == "counter" {
 		if metrics.Delta == nil {
@@ -247,21 +233,8 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-
-		respBytes, err := json.Marshal(resp)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("marshal response failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		if s.cfg.Key != "" {
-			hash := signature.CalculateHash(respBytes, s.cfg.Key)
-			w.Header().Set("HashSHA256", hash)
-		}
-
 		w.WriteHeader(http.StatusOK)
-		w.Write(respBytes)
+		json.NewEncoder(w).Encode(resp)
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
@@ -330,23 +303,8 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp := map[string]string{"status": "ok"}
 	w.Header().Set("Content-Type", "application/json")
-
-	respBytes, err := json.Marshal(resp)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("marshal response failed")
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	if s.cfg.Key != "" {
-		hash := signature.CalculateHash(respBytes, s.cfg.Key)
-		w.Header().Set("HashSHA256", hash)
-	}
-
 	w.WriteHeader(http.StatusOK)
-	w.Write(respBytes)
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
@@ -396,21 +354,8 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-
-		respBytes, err := json.Marshal(resp)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("marshal response failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		if s.cfg.Key != "" {
-			hash := signature.CalculateHash(respBytes, s.cfg.Key)
-			w.Header().Set("HashSHA256", hash)
-		}
-
 		w.WriteHeader(http.StatusOK)
-		w.Write(respBytes)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else if metrics.MType == "counter" {
@@ -432,21 +377,8 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-
-		respBytes, err := json.Marshal(resp)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("marshal response failed")
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		if s.cfg.Key != "" {
-			hash := signature.CalculateHash(respBytes, s.cfg.Key)
-			w.Header().Set("HashSHA256", hash)
-		}
-
 		w.WriteHeader(http.StatusOK)
-		w.Write(respBytes)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else {
