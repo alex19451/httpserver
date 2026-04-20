@@ -81,18 +81,22 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-			ww := &responseWriterWrapper{
+			rec := &responseWriterWrapper{
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
 				body:           bytes.NewBuffer(nil),
 			}
 
-			next.ServeHTTP(ww, r)
+			next.ServeHTTP(rec, r)
 
-			if ww.body.Len() > 0 {
-				sign := signature.CalculateHash(ww.body.Bytes(), key)
+			if rec.body.Len() > 0 {
+				sign := signature.CalculateHash(rec.body.Bytes(), key)
 				w.Header().Set("HashSHA256", sign)
-				w.Write(ww.body.Bytes())
+			}
+
+			w.WriteHeader(rec.statusCode)
+			if rec.body.Len() > 0 {
+				w.Write(rec.body.Bytes())
 			}
 		})
 	}
