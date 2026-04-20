@@ -350,7 +350,10 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			Value: &val,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			s.logger.Error().Err(err).Msg("encode response failed")
+		}
 
 	} else if metrics.MType == "counter" {
 		val, ok, err := s.db.GetCounter(metrics.ID)
@@ -370,7 +373,10 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			Delta: &val,
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			s.logger.Error().Err(err).Msg("encode response failed")
+		}
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
