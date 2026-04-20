@@ -58,8 +58,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	//r.Use(SignatureMiddleware(s.cfg.Key))
-	r.Use(GzipMiddleware)
+	r.Use(SignatureMiddleware(s.cfg.Key))
+	// r.Use(GzipMiddleware) - отключен для совместимости с подписями
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -204,16 +204,23 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			MType: metrics.MType,
 			Value: metrics.Value,
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("marshal response failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		if s.cfg.Key != "" {
-			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		w.Write(respBytes)
 
 	} else if metrics.MType == "counter" {
 		if metrics.Delta == nil {
@@ -238,16 +245,23 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			MType: metrics.MType,
 			Delta: &total,
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("marshal response failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		if s.cfg.Key != "" {
-			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		w.Write(respBytes)
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
@@ -316,15 +330,23 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	resp := map[string]string{"status": "ok"}
 	w.Header().Set("Content-Type", "application/json")
 
+	respBytes, err := json.Marshal(resp)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("marshal response failed")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
 	if s.cfg.Key != "" {
-		respBytes, _ := json.Marshal(map[string]string{"status": "ok"})
 		hash := signature.CalculateHash(respBytes, s.cfg.Key)
 		w.Header().Set("HashSHA256", hash)
 	}
 
 	w.WriteHeader(http.StatusOK)
+	w.Write(respBytes)
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
@@ -375,14 +397,20 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("marshal response failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		if s.cfg.Key != "" {
-			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		w.Write(respBytes)
 		return
 
 	} else if metrics.MType == "counter" {
@@ -405,14 +433,20 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Content-Type", "application/json")
 
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("marshal response failed")
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		if s.cfg.Key != "" {
-			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
 
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		w.Write(respBytes)
 		return
 
 	} else {
