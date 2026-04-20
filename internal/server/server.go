@@ -206,14 +206,15 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
 
 		if s.cfg.Key != "" {
 			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 
 	} else if metrics.MType == "counter" {
 		if metrics.Delta == nil {
@@ -240,14 +241,15 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
 
 		if s.cfg.Key != "" {
 			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 
 	} else {
 		http.Error(w, "invalid metric type", http.StatusBadRequest)
@@ -317,13 +319,14 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 
 	if s.cfg.Key != "" {
 		respBytes, _ := json.Marshal(map[string]string{"status": "ok"})
 		hash := signature.CalculateHash(respBytes, s.cfg.Key)
 		w.Header().Set("HashSHA256", hash)
 	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
@@ -373,14 +376,15 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
 
 		if s.cfg.Key != "" {
 			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else if metrics.MType == "counter" {
@@ -402,14 +406,15 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
 
 		if s.cfg.Key != "" {
 			respBytes, _ := json.Marshal(resp)
 			hash := signature.CalculateHash(respBytes, s.cfg.Key)
 			w.Header().Set("HashSHA256", hash)
 		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else {
