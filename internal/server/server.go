@@ -59,7 +59,7 @@ func (s *Server) Run() error {
 
 	r.Use(LoggingMiddleware(s.logger))
 	r.Use(SignatureMiddleware(s.cfg.Key))
-	// r.Use(GzipMiddleware)
+	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
