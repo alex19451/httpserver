@@ -12,16 +12,24 @@ import (
 
 type responseWriterWrapper struct {
 	http.ResponseWriter
-	statusCode int
-	body       *bytes.Buffer
+	statusCode    int
+	body          *bytes.Buffer
+	headerWritten bool
 }
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
+	if w.headerWritten {
+		return
+	}
 	w.statusCode = statusCode
+	w.headerWritten = true
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (w *responseWriterWrapper) Write(b []byte) (int, error) {
+	if !w.headerWritten {
+		w.WriteHeader(http.StatusOK)
+	}
 	w.body.Write(b)
 	return w.ResponseWriter.Write(b)
 }
@@ -35,6 +43,7 @@ func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handl
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
 				body:           &bytes.Buffer{},
+				headerWritten:  false,
 			}
 
 			next.ServeHTTP(ww, r)
@@ -81,6 +90,7 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
 				body:           &bytes.Buffer{},
+				headerWritten:  false,
 			}
 
 			next.ServeHTTP(ww, r)
@@ -90,7 +100,9 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 				w.Header().Set("HashSHA256", sign)
 			}
 
-			w.WriteHeader(ww.statusCode)
+			if !ww.headerWritten {
+				w.WriteHeader(ww.statusCode)
+			}
 			if ww.body.Len() > 0 {
 				w.Write(ww.body.Bytes())
 			}
