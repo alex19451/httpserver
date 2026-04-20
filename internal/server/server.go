@@ -57,8 +57,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	r.Use(GzipMiddleware)
 	r.Use(SignatureMiddleware(s.cfg.Key))
+	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
@@ -351,9 +351,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			s.logger.Error().Err(err).Msg("encode response failed")
-		}
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else if metrics.MType == "counter" {
@@ -375,9 +373,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			s.logger.Error().Err(err).Msg("encode response failed")
-		}
+		json.NewEncoder(w).Encode(resp)
 		return
 
 	} else {
