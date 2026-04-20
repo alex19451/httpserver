@@ -305,6 +305,8 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
+	s.logger.Info().Msg("valueJSON called")
+
 	body := r.Body
 	if strings.Contains(r.Header.Get("Content-Encoding"), "gzip") {
 		gz, err := gzip.NewReader(r.Body)
@@ -351,7 +353,9 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			s.logger.Error().Err(err).Msg("encode response failed")
+		}
 		return
 
 	} else if metrics.MType == "counter" {
@@ -373,7 +377,9 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			s.logger.Error().Err(err).Msg("encode response failed")
+		}
 		return
 
 	} else {

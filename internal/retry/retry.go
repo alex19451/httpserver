@@ -6,9 +6,6 @@ import (
 	"net"
 	"syscall"
 	"time"
-
-	"github.com/jackc/pgerrcode"
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -34,20 +31,6 @@ func IsRetriable(err error) bool {
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return false
-	}
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) {
-		switch pgErr.Code {
-		case pgerrcode.ConnectionException,
-			pgerrcode.ConnectionDoesNotExist,
-			pgerrcode.ConnectionFailure,
-			pgerrcode.SQLClientUnableToEstablishSQLConnection,
-			pgerrcode.SQLServerRejectedEstablishmentOfSQLConnection,
-			pgerrcode.TransactionResolutionUnknown,
-			pgerrcode.ProtocolViolation:
-			return true
-		}
 	}
 
 	var netErr net.Error
