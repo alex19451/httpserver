@@ -10,27 +10,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type responseWriterWrapper struct {
-	http.ResponseWriter
-	body    *bytes.Buffer
-	status  int
-	written bool
-}
-
-func (w *responseWriterWrapper) WriteHeader(statusCode int) {
-	if w.written {
-		return
-	}
-	w.status = statusCode
-	w.written = true
-	w.ResponseWriter.WriteHeader(statusCode)
-}
-
-func (w *responseWriterWrapper) Write(b []byte) (int, error) {
-	w.body.Write(b)
-	return w.ResponseWriter.Write(b)
-}
-
 func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +22,19 @@ func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handl
 				Msg("request")
 		})
 	}
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (r *responseRecorder) Write(b []byte) (int, error) {
+	return r.body.Write(b)
+}
+
+func (r *responseRecorder) WriteHeader(statusCode int) {
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
@@ -73,24 +65,17 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-			ww := &responseWriterWrapper{
+			rec := &responseRecorder{
 				ResponseWriter: w,
 				body:           &bytes.Buffer{},
-				written:        false,
 			}
 
-			next.ServeHTTP(ww, r)
+			next.ServeHTTP(rec, r)
 
-			if ww.body.Len() > 0 {
-				sign := signature.CalculateHash(ww.body.Bytes(), key)
+			if rec.body.Len() > 0 {
+				sign := signature.CalculateHash(rec.body.Bytes(), key)
 				w.Header().Set("HashSHA256", sign)
-			}
-
-			if !ww.written {
-				w.WriteHeader(ww.status)
-			}
-			if ww.body.Len() > 0 {
-				w.Write(ww.body.Bytes())
+				w.Write(rec.body.Bytes())
 			}
 		})
 	}

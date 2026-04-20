@@ -58,8 +58,8 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
-	r.Use(GzipMiddleware)                 // Сначала сжатие
-	r.Use(SignatureMiddleware(s.cfg.Key)) // Потом подпись
+	r.Use(GzipMiddleware)
+	//r.Use(SignatureMiddleware(s.cfg.Key))
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
 	r.Get("/value/{type}/{name}", s.getValue)
