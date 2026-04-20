@@ -13,6 +13,7 @@ import (
 	"github.com/alex19451/httpserver/internal/config"
 	"github.com/alex19451/httpserver/internal/models"
 	"github.com/alex19451/httpserver/internal/retry"
+	"github.com/alex19451/httpserver/internal/signature"
 	"github.com/rs/zerolog"
 )
 
@@ -36,6 +37,7 @@ func (a *Agent) Run() {
 		Str("address", a.cfg.Address).
 		Dur("poll_interval", pollInterval).
 		Dur("report_interval", reportInterval).
+		Bool("has_key", a.cfg.Key != "").
 		Msg("agent started")
 
 	count := 0
@@ -153,6 +155,11 @@ func (a *Agent) sendBatchRequest(metrics []models.Metrics) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Encoding", "gzip")
 	req.Header.Set("Accept-Encoding", "gzip")
+
+	if a.cfg.Key != "" {
+		hash := signature.CalculateHash(buf.Bytes(), a.cfg.Key)
+		req.Header.Set("HashSHA256", hash)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

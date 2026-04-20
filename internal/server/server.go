@@ -57,6 +57,7 @@ func (s *Server) Run() error {
 	r := chi.NewRouter()
 
 	r.Use(LoggingMiddleware(s.logger))
+	r.Use(SignatureMiddleware(s.cfg.Key))
 	r.Use(GzipMiddleware)
 
 	r.Post("/update/{type}/{name}/{value}", s.update)
@@ -83,6 +84,7 @@ func (s *Server) Run() error {
 		Str("file_path", s.cfg.FileStoragePath).
 		Bool("restore", s.cfg.Restore).
 		Str("database_dsn", s.cfg.DatabaseDSN).
+		Bool("has_key", s.cfg.Key != "").
 		Msg("server starting")
 
 	return http.ListenAndServe(s.cfg.Address, r)

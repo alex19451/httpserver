@@ -14,6 +14,7 @@ type ServerConfig struct {
 	Restore         bool
 	LogLevel        string
 	DatabaseDSN     string
+	Key             string
 }
 
 type AgentConfig struct {
@@ -21,6 +22,7 @@ type AgentConfig struct {
 	PollInterval   int
 	ReportInterval int
 	LogLevel       string
+	Key            string
 }
 
 func ParseServerConfig() *ServerConfig {
@@ -30,6 +32,7 @@ func ParseServerConfig() *ServerConfig {
 	var restoreFlag bool
 	var logLevelFlag string
 	var databaseDSNFlag string
+	var keyFlag string
 
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
 	flag.IntVar(&storeIntervalFlag, "i", 300, "store interval in seconds")
@@ -37,6 +40,7 @@ func ParseServerConfig() *ServerConfig {
 	flag.BoolVar(&restoreFlag, "r", true, "restore from file on startup")
 	flag.StringVar(&logLevelFlag, "l", "info", "log level (debug, info, warn, error)")
 	flag.StringVar(&databaseDSNFlag, "d", "", "database DSN (postgres://user:password@host:port/dbname)")
+	flag.StringVar(&keyFlag, "k", "", "key for SHA256 signature")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags]\n", os.Args[0])
@@ -58,6 +62,7 @@ func ParseServerConfig() *ServerConfig {
 	restore := getBoolConfigValue("RESTORE", restoreFlag, true)
 	logLevel := getConfigValue("LOG_LEVEL", logLevelFlag, "info")
 	databaseDSN := getConfigValue("DATABASE_DSN", databaseDSNFlag, "")
+	key := getConfigValue("KEY", keyFlag, "")
 
 	return &ServerConfig{
 		Address:         address,
@@ -66,6 +71,7 @@ func ParseServerConfig() *ServerConfig {
 		Restore:         restore,
 		LogLevel:        logLevel,
 		DatabaseDSN:     databaseDSN,
+		Key:             key,
 	}
 }
 
@@ -74,11 +80,13 @@ func ParseAgentConfig() *AgentConfig {
 	var pollIntervalFlag int
 	var reportIntervalFlag int
 	var logLevelFlag string
+	var keyFlag string
 
 	flag.StringVar(&addressFlag, "a", "localhost:8080", "HTTP server endpoint address")
 	flag.IntVar(&pollIntervalFlag, "p", 2, "metrics poll interval (seconds)")
 	flag.IntVar(&reportIntervalFlag, "r", 10, "metrics report interval (seconds)")
 	flag.StringVar(&logLevelFlag, "l", "info", "log level (debug, info, warn, error)")
+	flag.StringVar(&keyFlag, "k", "", "key for SHA256 signature")
 
 	flag.Parse()
 
@@ -92,12 +100,14 @@ func ParseAgentConfig() *AgentConfig {
 	pollInterval := getIntConfigValue("POLL_INTERVAL", pollIntervalFlag, 2)
 	reportInterval := getIntConfigValue("REPORT_INTERVAL", reportIntervalFlag, 10)
 	logLevel := getConfigValue("LOG_LEVEL", logLevelFlag, "info")
+	key := getConfigValue("KEY", keyFlag, "")
 
 	return &AgentConfig{
 		Address:        address,
 		PollInterval:   pollInterval,
 		ReportInterval: reportInterval,
 		LogLevel:       logLevel,
+		Key:            key,
 	}
 }
 
