@@ -14,22 +14,15 @@ type responseWriterWrapper struct {
 	http.ResponseWriter
 	statusCode int
 	body       *bytes.Buffer
-	written    bool
 }
 
 func (w *responseWriterWrapper) WriteHeader(statusCode int) {
-	if w.written {
-		return
-	}
 	w.statusCode = statusCode
-	w.written = true
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
 func (w *responseWriterWrapper) Write(b []byte) (int, error) {
-	if w.body != nil {
-		w.body.Write(b)
-	}
+	w.body.Write(b)
 	return w.ResponseWriter.Write(b)
 }
 
@@ -41,18 +34,15 @@ func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handl
 			ww := &responseWriterWrapper{
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
-				body:           bytes.NewBuffer(nil),
-				written:        false,
+				body:           &bytes.Buffer{},
 			}
 
 			next.ServeHTTP(ww, r)
 
-			duration := time.Since(start)
-
 			logger.Info().
 				Str("uri", r.RequestURI).
 				Str("method", r.Method).
-				Dur("duration", duration).
+				Dur("duration", time.Since(start)).
 				Int("status_code", ww.statusCode).
 				Msg("request")
 		})
@@ -87,25 +77,22 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-			rec := &responseWriterWrapper{
+			ww := &responseWriterWrapper{
 				ResponseWriter: w,
 				statusCode:     http.StatusOK,
-				body:           bytes.NewBuffer(nil),
-				written:        false,
+				body:           &bytes.Buffer{},
 			}
 
-			next.ServeHTTP(rec, r)
+			next.ServeHTTP(ww, r)
 
-			if rec.body.Len() > 0 {
-				sign := signature.CalculateHash(rec.body.Bytes(), key)
+			if ww.body.Len() > 0 {
+				sign := signature.CalculateHash(ww.body.Bytes(), key)
 				w.Header().Set("HashSHA256", sign)
 			}
 
-			if !rec.written {
-				w.WriteHeader(rec.statusCode)
-			}
-			if rec.body.Len() > 0 {
-				w.Write(rec.body.Bytes())
+			w.WriteHeader(ww.statusCode)
+			if ww.body.Len() > 0 {
+				w.Write(ww.body.Bytes())
 			}
 		})
 	}
