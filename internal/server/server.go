@@ -439,7 +439,7 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(strconv.FormatFloat(val, 'f', 1, 64)))
+		w.Write([]byte(strconv.FormatFloat(val, 'f', -1, 64)))
 
 	} else if metricType == "counter" {
 		val, ok, err := s.db.GetCounter(name)
