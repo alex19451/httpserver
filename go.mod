@@ -10,7 +10,6 @@ require (
 )
 
 require (
-	github.com/avast/retry-go/v4 v4.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
