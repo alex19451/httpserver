@@ -10,20 +10,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
-type responseRecorder struct {
+type hashWriter struct {
 	http.ResponseWriter
-	body *bytes.Buffer
-	code int
+	Body   *bytes.Buffer
+	Status int
 }
 
-func (r *responseRecorder) WriteHeader(statusCode int) {
-	r.code = statusCode
-	r.ResponseWriter.WriteHeader(statusCode)
+func (w *hashWriter) Write(b []byte) (int, error) {
+	return w.Body.Write(b)
 }
 
-func (r *responseRecorder) Write(b []byte) (int, error) {
-	r.body.Write(b)
-	return r.ResponseWriter.Write(b)
+func (w *hashWriter) WriteHeader(statusCode int) {
+	w.Status = statusCode
 }
 
 func LoggingMiddleware(logger zerolog.Logger) func(next http.Handler) http.Handler {
@@ -68,19 +66,19 @@ func SignatureMiddleware(key string) func(next http.Handler) http.Handler {
 
 			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-			rec := &responseRecorder{
+			wrapper := &hashWriter{
 				ResponseWriter: w,
-				body:           &bytes.Buffer{},
-				code:           http.StatusOK,
+				Body:           &bytes.Buffer{},
+				Status:         http.StatusOK,
 			}
 
-			next.ServeHTTP(rec, r)
+			next.ServeHTTP(wrapper, r)
 
-			if rec.body.Len() > 0 {
-				sign := signature.CalculateHash(rec.body.Bytes(), key)
-				w.Header().Set("HashSHA256", sign)
-				w.Write(rec.body.Bytes())
-			}
+			hash := signature.CalculateHash(wrapper.Body.Bytes(), key)
+			w.Header().Set("HashSHA256", hash)
+
+			w.WriteHeader(wrapper.Status)
+			w.Write(wrapper.Body.Bytes())
 		})
 	}
 }
