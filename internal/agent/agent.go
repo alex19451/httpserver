@@ -41,25 +41,13 @@ func (a *Agent) Run() {
 		Bool("has_key", a.cfg.Key != "").
 		Msg("agent started")
 
-	a.waitForServer()
-
-	count := 1
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-
-	a.logger.Info().Msg("sending initial metrics")
-	if err := retry.DoWithRetry(func() error {
-		return a.sendBatch(count, mem)
-	}); err != nil {
-		a.logger.Error().Err(err).Msg("failed to send initial metrics")
-	} else {
-		a.logger.Info().Msg("initial metrics sent successfully")
-	}
-
+	count := 0
 	pollTicker := time.NewTicker(pollInterval)
 	reportTicker := time.NewTicker(reportInterval)
 	defer pollTicker.Stop()
 	defer reportTicker.Stop()
+
+	var mem runtime.MemStats
 
 	for {
 		select {
@@ -78,34 +66,6 @@ func (a *Agent) Run() {
 			}
 		}
 	}
-}
-
-func (a *Agent) waitForServer() {
-	url := fmt.Sprintf("http://%s/ping", a.cfg.Address)
-	client := &http.Client{Timeout: 2 * time.Second}
-
-	backoffs := []time.Duration{1 * time.Second, 2 * time.Second, 3 * time.Second, 5 * time.Second}
-
-	for i, backoff := range backoffs {
-		resp, err := client.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close()
-			a.logger.Info().Msg("server is ready")
-			return
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-
-		if i < len(backoffs)-1 {
-			a.logger.Warn().Dur("backoff", backoff).Msg("waiting for server")
-			ticker := time.NewTicker(backoff)
-			<-ticker.C
-			ticker.Stop()
-		}
-	}
-
-	a.logger.Warn().Msg("server may not be ready, continuing anyway")
 }
 
 func (a *Agent) sendBatch(pollCount int, mem runtime.MemStats) error {
