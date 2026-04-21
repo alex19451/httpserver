@@ -2,43 +2,13 @@ package server
 
 import (
 	"bytes"
-	"compress/gzip"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/alex19451/httpserver/internal/signature"
 	"github.com/rs/zerolog"
 )
-
-type gzipResponseWriter struct {
-	http.ResponseWriter
-	Writer io.Writer
-}
-
-func (w gzipResponseWriter) Write(b []byte) (int, error) {
-	return w.Writer.Write(b)
-}
-
-func GzipMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		gz, err := gzip.NewWriterLevel(w, gzip.BestSpeed)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		defer gz.Close()
-
-		w.Header().Set("Content-Encoding", "gzip")
-		next.ServeHTTP(gzipResponseWriter{ResponseWriter: w, Writer: gz}, r)
-	})
-}
 
 type responseRecorder struct {
 	http.ResponseWriter
