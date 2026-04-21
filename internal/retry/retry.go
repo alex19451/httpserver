@@ -37,7 +37,7 @@ func IsRetriable(err error) bool {
 }
 
 func DoWithRetry(fn func() error) error {
-	backoffs := []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
+	backoffs := []time.Duration{2 * time.Second, 4 * time.Second, 8 * time.Second, 10 * time.Second}
 
 	var lastErr error
 
