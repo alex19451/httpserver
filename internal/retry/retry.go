@@ -13,18 +13,6 @@ var (
 	ErrMaxRetriesExceeded = errors.New("max retries exceeded")
 )
 
-type RetriableError struct {
-	Err error
-}
-
-func (e *RetriableError) Error() string {
-	return e.Err.Error()
-}
-
-func (e *RetriableError) Unwrap() error {
-	return e.Err
-}
-
 func IsRetriable(err error) bool {
 	if err == nil {
 		return false

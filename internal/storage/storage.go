@@ -4,20 +4,6 @@ import (
 	"github.com/alex19451/httpserver/internal/models"
 )
 
-type StorageInterface interface {
-	UpdateGauge(name string, value float64) error
-	GetGauge(name string) (float64, bool, error)
-	UpdateCounter(name string, delta int64) (int64, error)
-	GetCounter(name string) (int64, bool, error)
-	GetAll() (map[string]float64, map[string]int64, error)
-	Ping() error
-	Close() error
-	SaveToFile() error
-	LoadFromFile() error
-	IsDB() bool
-	BatchUpdate(metrics []models.Metrics) error
-}
-
 type Storage struct {
 	inMemory *InMemoryStorage
 	file     *InMemoryStorage
@@ -148,6 +134,13 @@ func (s *Storage) IsDB() bool {
 func (s *Storage) BatchUpdate(metrics []models.Metrics) error {
 	if s.mode == "db" {
 		return s.db.BatchUpdate(metrics)
+	}
+	for _, metric := range metrics {
+		if metric.MType == "gauge" {
+			s.UpdateGauge(metric.ID, *metric.Value)
+		} else if metric.MType == "counter" {
+			s.UpdateCounter(metric.ID, *metric.Delta)
+		}
 	}
 	return nil
 }

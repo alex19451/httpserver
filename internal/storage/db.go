@@ -149,31 +149,37 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
+
 		for rows.Next() {
 			var name string
 			var value float64
 			if err := rows.Scan(&name, &value); err != nil {
-				rows.Close()
 				return err
 			}
 			g[name] = value
 		}
-		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 
 		rows, err = s.db.Query("SELECT name, value FROM counters")
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
+
 		for rows.Next() {
 			var name string
 			var value int64
 			if err := rows.Scan(&name, &value); err != nil {
-				rows.Close()
 				return err
 			}
 			c[name] = value
 		}
-		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
 
 		gauges = g
 		counters = c
