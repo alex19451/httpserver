@@ -95,7 +95,7 @@ func (s *DBStorage) GetGauge(name string) (float64, bool, error) {
 		return s.db.QueryRow("SELECT value FROM gauges WHERE name = $1", name).Scan(&value)
 	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *DBStorage) GetCounter(name string) (int64, bool, error) {
 		return s.db.QueryRow("SELECT value FROM counters WHERE name = $1", name).Scan(&value)
 	})
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0, false, nil
 	}
 	if err != nil {
@@ -138,54 +138,49 @@ func (s *DBStorage) GetCounter(name string) (int64, bool, error) {
 }
 
 func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
-	gauges := make(map[string]float64)
-	counters := make(map[string]int64)
+	var gauges map[string]float64
+	var counters map[string]int64
 
 	err := retry.DoWithRetry(func() error {
+		g := make(map[string]float64)
+		c := make(map[string]int64)
+
 		rows, err := s.db.Query("SELECT name, value FROM gauges")
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-
 		for rows.Next() {
 			var name string
 			var value float64
 			if err := rows.Scan(&name, &value); err != nil {
+				rows.Close()
 				return err
 			}
-			gauges[name] = value
+			g[name] = value
 		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
+		rows.Close()
 
 		rows, err = s.db.Query("SELECT name, value FROM counters")
 		if err != nil {
 			return err
 		}
-		defer rows.Close()
-
 		for rows.Next() {
 			var name string
 			var value int64
 			if err := rows.Scan(&name, &value); err != nil {
+				rows.Close()
 				return err
 			}
-			counters[name] = value
+			c[name] = value
 		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
+		rows.Close()
 
+		gauges = g
+		counters = c
 		return nil
 	})
 
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return gauges, counters, nil
+	return gauges, counters, err
 }
 
 func (s *DBStorage) BatchUpdate(metrics []models.Metrics) error {

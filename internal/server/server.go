@@ -343,6 +343,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			s.logger.Warn().Str("id", metrics.ID).Str("type", metrics.MType).Msg("metric not found")
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
@@ -366,6 +367,7 @@ func (s *Server) valueJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			s.logger.Warn().Str("id", metrics.ID).Str("type", metrics.MType).Msg("metric not found")
 			http.Error(w, "metric not found", http.StatusNotFound)
 			return
 		}
@@ -399,6 +401,7 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			s.logger.Warn().Str("name", name).Str("type", metricType).Msg("metric not found")
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -413,6 +416,7 @@ func (s *Server) getValue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !ok {
+			s.logger.Warn().Str("name", name).Str("type", metricType).Msg("metric not found")
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}

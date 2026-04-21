@@ -1,10 +1,22 @@
 package storage
 
 import (
-	"fmt"
-
 	"github.com/alex19451/httpserver/internal/models"
 )
+
+type StorageInterface interface {
+	UpdateGauge(name string, value float64) error
+	GetGauge(name string) (float64, bool, error)
+	UpdateCounter(name string, delta int64) (int64, error)
+	GetCounter(name string) (int64, bool, error)
+	GetAll() (map[string]float64, map[string]int64, error)
+	Ping() error
+	Close() error
+	SaveToFile() error
+	LoadFromFile() error
+	IsDB() bool
+	BatchUpdate(metrics []models.Metrics) error
+}
 
 type Storage struct {
 	inMemory *InMemoryStorage
@@ -137,5 +149,5 @@ func (s *Storage) BatchUpdate(metrics []models.Metrics) error {
 	if s.mode == "db" {
 		return s.db.BatchUpdate(metrics)
 	}
-	return fmt.Errorf("batch update only supported for database storage")
+	return nil
 }

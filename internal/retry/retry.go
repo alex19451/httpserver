@@ -3,6 +3,7 @@ package retry
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net"
 	"syscall"
 	"time"
@@ -50,22 +51,20 @@ func IsRetriable(err error) bool {
 func DoWithRetry(fn func() error) error {
 	backoffs := []time.Duration{1 * time.Second, 3 * time.Second, 5 * time.Second}
 
-	var errs []error
+	var lastErr error
 
 	for i, backoff := range backoffs {
-		err := fn()
-		if err == nil {
+		lastErr = fn()
+		if lastErr == nil {
 			return nil
 		}
 
-		if errors.Is(err, sql.ErrNoRows) {
-			return err
+		if errors.Is(lastErr, sql.ErrNoRows) {
+			return lastErr
 		}
 
-		errs = append(errs, err)
-
-		if !IsRetriable(err) {
-			return errors.Join(errs...)
+		if !IsRetriable(lastErr) {
+			return lastErr
 		}
 
 		if i < len(backoffs)-1 {
@@ -73,6 +72,5 @@ func DoWithRetry(fn func() error) error {
 		}
 	}
 
-	errs = append(errs, ErrMaxRetriesExceeded)
-	return errors.Join(errs...)
+	return fmt.Errorf("%w: %v", ErrMaxRetriesExceeded, lastErr)
 }

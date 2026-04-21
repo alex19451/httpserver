@@ -17,7 +17,7 @@ func CalculateHash(data []byte, key string) string {
 
 func VerifyHash(data []byte, expectedHash string, key string) bool {
 	if key == "" {
-		return true
+		return false
 	}
 	actualHash := CalculateHash(data, key)
 	return hmac.Equal([]byte(actualHash), []byte(expectedHash))
