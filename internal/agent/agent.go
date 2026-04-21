@@ -41,6 +41,8 @@ func (a *Agent) Run() {
 		Bool("has_key", a.cfg.Key != "").
 		Msg("agent started")
 
+	a.waitForServer()
+
 	count := 0
 	pollTicker := time.NewTicker(pollInterval)
 	reportTicker := time.NewTicker(reportInterval)
@@ -65,6 +67,27 @@ func (a *Agent) Run() {
 				a.logger.Info().Msg("metrics sent successfully")
 			}
 		}
+	}
+}
+
+func (a *Agent) waitForServer() {
+	url := fmt.Sprintf("http://%s/ping", a.cfg.Address)
+	client := &http.Client{Timeout: 1 * time.Second}
+
+	err := retry.DoWithRetry(func() error {
+		resp, err := client.Get(url)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("server not ready: %d", resp.StatusCode)
+		}
+		return nil
+	})
+
+	if err != nil {
+		a.logger.Warn().Err(err).Msg("server may not be ready, continuing anyway")
 	}
 }
 
@@ -162,7 +185,10 @@ func (a *Agent) sendBatchRequest(metrics []models.Metrics) error {
 		req.Header.Set("HashSHA256", hash)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send batch: %w", err)

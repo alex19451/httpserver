@@ -56,7 +56,9 @@ func DoWithRetry(fn func() error) error {
 		}
 
 		if i < len(backoffs)-1 {
-			time.Sleep(backoff)
+			ticker := time.NewTicker(backoff)
+			<-ticker.C
+			ticker.Stop()
 		}
 	}
 
