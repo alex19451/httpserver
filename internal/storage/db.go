@@ -178,9 +178,8 @@ func (s *DBStorage) getAllCounters() (map[string]int64, error) {
 func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 	var gauges map[string]float64
 	var counters map[string]int64
-	var err error
 
-	err = retry.DoWithRetry(func() error {
+	err := retry.DoWithRetry(func() error {
 		var err1, err2 error
 		gauges, err1 = s.getAllGauges()
 		counters, err2 = s.getAllCounters()
@@ -198,29 +197,26 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 }
 
 func (s *DBStorage) BatchUpdate(metrics []models.Metrics) error {
-	var lastErr error
-
 	for _, metric := range metrics {
 		if metric.MType == "gauge" {
 			if metric.Value == nil {
 				return fmt.Errorf("value required for gauge %s", metric.ID)
 			}
 			if err := s.UpdateGauge(metric.ID, *metric.Value); err != nil {
-				lastErr = err
+				return err
 			}
 		} else if metric.MType == "counter" {
 			if metric.Delta == nil {
 				return fmt.Errorf("delta required for counter %s", metric.ID)
 			}
 			if _, err := s.UpdateCounter(metric.ID, *metric.Delta); err != nil {
-				lastErr = err
+				return err
 			}
 		} else {
 			return fmt.Errorf("invalid type %s", metric.MType)
 		}
 	}
-
-	return lastErr
+	return nil
 }
 
 func (s *DBStorage) Ping() error {
