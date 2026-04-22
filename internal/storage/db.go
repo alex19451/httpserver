@@ -137,52 +137,60 @@ func (s *DBStorage) GetCounter(name string) (int64, bool, error) {
 	return value, true, nil
 }
 
+func (s *DBStorage) getAllGauges() (map[string]float64, error) {
+	rows, err := s.db.Query("SELECT name, value FROM gauges")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]float64)
+	for rows.Next() {
+		var name string
+		var value float64
+		if err := rows.Scan(&name, &value); err != nil {
+			return nil, err
+		}
+		result[name] = value
+	}
+	return result, rows.Err()
+}
+
+func (s *DBStorage) getAllCounters() (map[string]int64, error) {
+	rows, err := s.db.Query("SELECT name, value FROM counters")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]int64)
+	for rows.Next() {
+		var name string
+		var value int64
+		if err := rows.Scan(&name, &value); err != nil {
+			return nil, err
+		}
+		result[name] = value
+	}
+	return result, rows.Err()
+}
+
 func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 	var gauges map[string]float64
 	var counters map[string]int64
+	var err error
 
-	err := retry.DoWithRetry(func() error {
-		g := make(map[string]float64)
-		c := make(map[string]int64)
+	err = retry.DoWithRetry(func() error {
+		var err1, err2 error
+		gauges, err1 = s.getAllGauges()
+		counters, err2 = s.getAllCounters()
 
-		rows, err := s.db.Query("SELECT name, value FROM gauges")
-		if err != nil {
-			return err
+		if err1 != nil {
+			return err1
 		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var name string
-			var value float64
-			if err := rows.Scan(&name, &value); err != nil {
-				return err
-			}
-			g[name] = value
+		if err2 != nil {
+			return err2
 		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-
-		rows, err = s.db.Query("SELECT name, value FROM counters")
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var name string
-			var value int64
-			if err := rows.Scan(&name, &value); err != nil {
-				return err
-			}
-			c[name] = value
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
-
-		gauges = g
-		counters = c
 		return nil
 	})
 
@@ -190,47 +198,29 @@ func (s *DBStorage) GetAll() (map[string]float64, map[string]int64, error) {
 }
 
 func (s *DBStorage) BatchUpdate(metrics []models.Metrics) error {
-	return retry.DoWithRetry(func() error {
-		tx, err := s.db.Begin()
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
+	var lastErr error
 
-		for _, metric := range metrics {
-			if metric.MType == "gauge" {
-				if metric.Value == nil {
-					return fmt.Errorf("value required for gauge %s", metric.ID)
-				}
-				query := `
-					INSERT INTO gauges (name, value, updated_at)
-					VALUES ($1, $2, NOW())
-					ON CONFLICT (name) DO UPDATE
-					SET value = EXCLUDED.value, updated_at = NOW()
-				`
-				if _, err := tx.Exec(query, metric.ID, *metric.Value); err != nil {
-					return err
-				}
-			} else if metric.MType == "counter" {
-				if metric.Delta == nil {
-					return fmt.Errorf("delta required for counter %s", metric.ID)
-				}
-				query := `
-					INSERT INTO counters (name, value, updated_at)
-					VALUES ($1, $2, NOW())
-					ON CONFLICT (name) DO UPDATE
-					SET value = counters.value + EXCLUDED.value, updated_at = NOW()
-				`
-				if _, err := tx.Exec(query, metric.ID, *metric.Delta); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("invalid type %s", metric.MType)
+	for _, metric := range metrics {
+		if metric.MType == "gauge" {
+			if metric.Value == nil {
+				return fmt.Errorf("value required for gauge %s", metric.ID)
 			}
+			if err := s.UpdateGauge(metric.ID, *metric.Value); err != nil {
+				lastErr = err
+			}
+		} else if metric.MType == "counter" {
+			if metric.Delta == nil {
+				return fmt.Errorf("delta required for counter %s", metric.ID)
+			}
+			if _, err := s.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+				lastErr = err
+			}
+		} else {
+			return fmt.Errorf("invalid type %s", metric.MType)
 		}
+	}
 
-		return tx.Commit()
-	})
+	return lastErr
 }
 
 func (s *DBStorage) Ping() error {
