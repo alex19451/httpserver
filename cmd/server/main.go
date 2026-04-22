@@ -50,6 +50,7 @@ func main() {
 		logger.Info().Msg("using in-memory storage")
 		db = storage.New()
 	}
+	db.SetStoreInterval(cfg.StoreInterval)
 
 	srv := server.New(cfg, db, logger)
 

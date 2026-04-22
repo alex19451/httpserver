@@ -37,9 +37,7 @@ func (s *Server) Run() error {
 		}
 	}
 
-	if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-		s.logger.Info().Msg("sync save mode enabled")
-	} else if s.cfg.StoreInterval > 0 && s.cfg.FileStoragePath != "" {
+	if s.cfg.StoreInterval > 0 && s.cfg.FileStoragePath != "" {
 		go func() {
 			ticker := time.NewTicker(time.Duration(s.cfg.StoreInterval) * time.Second)
 			defer ticker.Stop()
@@ -122,12 +120,6 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusOK)
 
-		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-			if err := s.db.SaveToFile(); err != nil {
-				s.logger.Error().Err(err).Msg("error saving to file")
-			}
-		}
-
 	} else if metricType == "counter" {
 		val, err := strconv.ParseInt(value, 10, 64)
 		if err != nil {
@@ -140,12 +132,6 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-
-		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-			if err := s.db.SaveToFile(); err != nil {
-				s.logger.Error().Err(err).Msg("error saving to file")
-			}
-		}
 
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
@@ -192,12 +178,6 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-			if err := s.db.SaveToFile(); err != nil {
-				s.logger.Error().Err(err).Msg("error saving to file")
-			}
-		}
-
 		resp := models.Metrics{
 			ID:    metrics.ID,
 			MType: metrics.MType,
@@ -218,12 +198,6 @@ func (s *Server) updateJSON(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error().Err(err).Msg("update counter failed")
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
-		}
-
-		if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-			if err := s.db.SaveToFile(); err != nil {
-				s.logger.Error().Err(err).Msg("error saving to file")
-			}
 		}
 
 		resp := models.Metrics{
@@ -294,12 +268,6 @@ func (s *Server) batchUpdate(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("invalid type %s", metric.MType), http.StatusBadRequest)
 				return
 			}
-		}
-	}
-
-	if s.cfg.StoreInterval == 0 && s.cfg.FileStoragePath != "" {
-		if err := s.db.SaveToFile(); err != nil {
-			s.logger.Error().Err(err).Msg("error saving to file")
 		}
 	}
 

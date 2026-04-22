@@ -5,10 +5,12 @@ import (
 )
 
 type Storage struct {
-	inMemory *InMemoryStorage
-	file     *InMemoryStorage
-	db       *DBStorage
-	mode     string
+	inMemory      *InMemoryStorage
+	file          *InMemoryStorage
+	db            *DBStorage
+	mode          string
+	filePath      string
+	storeInterval int
 }
 
 func New() *Storage {
@@ -20,8 +22,9 @@ func New() *Storage {
 
 func NewWithFile(filePath string) *Storage {
 	return &Storage{
-		file: NewInMemoryWithFile(filePath),
-		mode: "file",
+		file:     NewInMemoryWithFile(filePath),
+		mode:     "file",
+		filePath: filePath,
 	}
 }
 
@@ -36,12 +39,23 @@ func NewWithDB(dsn string) (*Storage, error) {
 	}, nil
 }
 
+func (s *Storage) SetStoreInterval(interval int) {
+	s.storeInterval = interval
+}
+
+func (s *Storage) shouldSaveSync() bool {
+	return s.storeInterval == 0 && s.mode == "file" && s.filePath != ""
+}
+
 func (s *Storage) UpdateGauge(name string, value float64) error {
 	switch s.mode {
 	case "db":
 		return s.db.UpdateGauge(name, value)
 	case "file":
 		s.file.UpdateGauge(name, value)
+		if s.shouldSaveSync() {
+			return s.file.SaveToFile()
+		}
 		return nil
 	default:
 		s.inMemory.UpdateGauge(name, value)
@@ -67,7 +81,11 @@ func (s *Storage) UpdateCounter(name string, delta int64) (int64, error) {
 	case "db":
 		return s.db.UpdateCounter(name, delta)
 	case "file":
-		return s.file.UpdateCounter(name, delta), nil
+		result := s.file.UpdateCounter(name, delta)
+		if s.shouldSaveSync() {
+			return result, s.file.SaveToFile()
+		}
+		return result, nil
 	default:
 		return s.inMemory.UpdateCounter(name, delta), nil
 	}
@@ -137,9 +155,13 @@ func (s *Storage) BatchUpdate(metrics []models.Metrics) error {
 	}
 	for _, metric := range metrics {
 		if metric.MType == "gauge" {
-			s.UpdateGauge(metric.ID, *metric.Value)
+			if err := s.UpdateGauge(metric.ID, *metric.Value); err != nil {
+				return err
+			}
 		} else if metric.MType == "counter" {
-			s.UpdateCounter(metric.ID, *metric.Delta)
+			if _, err := s.UpdateCounter(metric.ID, *metric.Delta); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
